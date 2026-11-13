@@ -33,7 +33,7 @@ The audit uses **only your Strava OAuth connection**: no Garmin API request or G
 **Safety:** This command never modifies or deletes anything on Strava. Matches are heuristic, not proof of duplication; review each pair before deleting either activity manually. Strava API rate limits apply to the initial activity inventory and optional detailed reads; completed page-by-page inventory sync can resume after throttling. The audit uses the last cached inventory if a complete sync was performed within 10 minutes; force `--refresh-strava` when you know newer Apple Watch activities have arrived.
 
 
-**Status:** Tested against mocked Garmin and Strava API responses, **not yet against your live Garmin/Strava accounts**. Test with three activities first. This is a personal, local-only tool; Garmin's Personal API is not for commercial multi-user services.
+**Status:** The migration flow has been used against a real Garmin and Strava account, while automated CI uses mocked provider responses and synthetic fixtures. The TypeScript refactor has not yet been exercised against a fresh real-world account; start with small batches. This is a personal, local-only tool; Garmin's Personal API is not for commercial multi-user services.
 
 ## Requirements
 
@@ -44,7 +44,7 @@ The audit uses **only your Strava OAuth connection**: no Garmin API request or G
 ## Installation and TypeScript development
 
 ```bash
-npm install            # installs yauzl and TypeScript tooling; builds via prepare
+npm ci                 # installs locked dependencies; builds via prepare
 npm run typecheck      # strict TypeScript checks
 npm test               # compiles and runs the regression suite
 npm run dev -- help    # executes TypeScript directly while developing
@@ -62,6 +62,8 @@ The existing SQLite state under `~/.garmin-api-to-strava` is retained; no reset 
 - `src/audit/` — strict and sensitive duplicate detection and CSV/JSON reporting
 - `src/formats/` — original activity FIT/TCX/GPX inspection and bounded ZIP extraction
 - `src/domain/` — shared interfaces for external API responses and local persistence
+
+See [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [CHANGELOG.md](CHANGELOG.md) for reliability guarantees, development notes, and upgrade details.
 
 The source is strict-checked TypeScript, targeting modern Node.js ESM. No web backend is required.
 
