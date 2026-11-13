@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Official Garmin Connect Personal API: https://developer.garmin.com/gc-developer-program/personal/swagger-docs/
-import type { GarminActivity } from '../domain/types.js';
+import type { GarminActivity, GarminActivityPayload } from '../domain/types.js';
 
 const DEFAULT_BASE = 'https://personal.connectapi.garmin.com';
 const TOKEN_PATH = '/personalapitoken-service/personal-api/personal-api-key/token';
@@ -50,7 +50,7 @@ export function jwtExpiresAt(token: string): number {
   } catch { throw new Error('Garmin token response was not a JWT with an exp claim.'); }
 }
 
-export function normalizeGarminActivity(raw: Record<string, any>): GarminActivity {
+export function normalizeGarminActivity(raw: GarminActivityPayload): GarminActivity {
   const id = String(raw?.activityId ?? raw?.id ?? '');
   if (!/^\d+$/.test(id) || Number(id) <= 0) throw new Error('Garmin returned an activity without a valid positive numeric activityId');
   const date = raw.startTimeGMT ?? raw.startTimeUTC ?? raw.startTimeUtc ?? null;
@@ -62,13 +62,19 @@ export function normalizeGarminActivity(raw: Record<string, any>): GarminActivit
     if (Number.isFinite(parsed)) startUtc = Math.floor(parsed / 1000);
   }
   const numOrNull = (value: unknown) => value != null && Number.isFinite(Number(value)) ? Number(value) : null;
+  const activityType = raw.activityType;
+  const sport = typeof activityType === 'string'
+    ? activityType
+    : activityType && typeof activityType === 'object'
+      ? activityType.typeKey ?? (activityType.parentTypeId == null ? null : String(activityType.parentTypeId))
+      : null;
   return {
     id,
     name: String(raw.activityName ?? raw.name ?? `Garmin ${id}`).slice(0, 200),
     startUtc,
     durationSeconds: numOrNull(raw.duration ?? raw.elapsedDuration),
     distanceM: numOrNull(raw.distance),
-    sport: raw.activityType?.typeKey ?? raw.activityType?.parentTypeId ?? raw.activityType ?? null,
+    sport,
   };
 }
 
@@ -150,7 +156,7 @@ export class GarminClient {
     return token;
   }
 
-  async get(path: string, { accept = 'application/json', binary = false }: {accept?:string;binary?:boolean} = {}): Promise<any> {
+  async get<T = unknown>(path: string, { accept = 'application/json', binary = false }: {accept?:string;binary?:boolean} = {}): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const token = await this.accessToken(attempt > 0);
       await this.throttle();
@@ -167,23 +173,23 @@ export class GarminClient {
         const bytes = Buffer.from(await response.arrayBuffer());
         if (bytes.length > MAX_DOWNLOAD) throw new Error('Garmin activity ZIP exceeds 64 MiB safety limit.');
         if (bytes.subarray(0,4).toString('hex') !== '504b0304') throw new Error('Garmin did not return an activity ZIP archive.');
-        return bytes;
+        return bytes as T;
       }
-      return response.json();
+      return await response.json() as T;
     }
     throw new Error('Garmin authentication failed after renewing the bearer token.');
   }
 
   async testConnection() { return this.get('/userprofile-service/userprofile/settings'); }
   async activities(start = 0, limit = 20): Promise<GarminActivity[]> {
-    const result = await this.get(`/activitylist-service/activities/search/activities?start=${start}&limit=${limit}`);
+    const result = await this.get<GarminActivityPayload[] | { activities?: GarminActivityPayload[] }>(`/activitylist-service/activities/search/activities?start=${start}&limit=${limit}`);
     const rows = Array.isArray(result) ? result : result?.activities;
     if (!Array.isArray(rows)) throw new Error('Unexpected Garmin activity-list response shape; please report the non-secret response structure.');
     return rows.map(normalizeGarminActivity);
   }
   downloadActivity(id: string): Promise<Buffer> {
     if (!/^\d+$/.test(String(id)) || BigInt(id) <= 0n) throw new Error('Invalid Garmin activity ID');
-    return this.get(`/download-service/files/activity/${id}`, {
+    return this.get<Buffer>(`/download-service/files/activity/${id}`, {
       binary: true, accept: 'application/zip, application/x-zip-compressed, application/octet-stream',
     });
   }

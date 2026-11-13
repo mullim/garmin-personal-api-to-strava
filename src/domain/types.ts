@@ -114,3 +114,18 @@ export interface FitMetadata {
   distanceM: number | null;
   sport: string | null;
 }
+
+/** Response fields consumed from Garmin's Personal API activity-list endpoint. */
+export interface GarminActivityPayload {
+  activityId?: number | string | null;
+  id?: number | string | null;
+  activityName?: string | null;
+  name?: string | null;
+  startTimeGMT?: string | number | null;
+  startTimeUTC?: string | number | null;
+  startTimeUtc?: string | number | null;
+  duration?: number | string | null;
+  elapsedDuration?: number | string | null;
+  distance?: number | string | null;
+  activityType?: string | {typeKey?:string|null;parentTypeId?:string|number|null} | null;
+}

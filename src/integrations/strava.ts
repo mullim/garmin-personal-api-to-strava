@@ -29,10 +29,30 @@ function saveToken(home: string, token: StravaToken) {
   chmodSync(path, 0o600);
 }
 
+/** A malformed token response should fail closed rather than writing unusable credentials. */
+function isStravaToken(value: unknown): value is StravaToken {
+  if (!value || typeof value !== 'object') return false;
+  const token = value as Partial<StravaToken>;
+  return typeof token.access_token === 'string'
+    && typeof token.refresh_token === 'string'
+    && typeof token.expires_at === 'number'
+    && Number.isFinite(token.expires_at);
+}
+
 async function tokenRequest(form: Record<string,string>, fetchFn: typeof fetch = fetch): Promise<StravaToken> {
-  const response = await fetchFn(`${AUTH}/oauth/token`, { method: 'POST', body: new URLSearchParams(form) });
-  const json = await response.json();
-  if (!response.ok) throw new Error(`Strava authentication failed (${response.status}): ${json.message ?? JSON.stringify(json)}`);
+  const response = await fetchFn(`${AUTH}/oauth/token`, {
+    method: 'POST',
+    body: new URLSearchParams(form),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const json: unknown = await response.json();
+  if (!response.ok) {
+    const message = json && typeof json === 'object' && 'message' in json
+      ? String(json.message)
+      : JSON.stringify(json);
+    throw new Error(`Strava authentication failed (${response.status}): ${message}`);
+  }
+  if (!isStravaToken(json)) throw new Error('Strava returned a malformed OAuth token response.');
   return json;
 }
 
@@ -95,7 +115,13 @@ export class StravaClient {
   constructor(home: string, fetchFn: typeof fetch = fetch) {
     this.home = home;
     this.fetchFn = fetchFn;
-    this.token = hasToken(home) ? JSON.parse(readFileSync(join(home, 'token.json'), 'utf8')) : null;
+    const saved: unknown = hasToken(home)
+      ? JSON.parse(readFileSync(join(home, 'token.json'), 'utf8'))
+      : null;
+    if (saved !== null && !isStravaToken(saved)) {
+      throw new Error('Saved Strava OAuth token is invalid; run auth again.');
+    }
+    this.token = saved;
     this.budgets = { general: null, read: null } as { general: RateBudget | null; read: RateBudget | null };
   }
 
@@ -136,7 +162,7 @@ export class StravaClient {
     }
   }
 
-  async request(method: 'GET' | 'POST', path: string, body: BodyInit | undefined = undefined, { upload = false }: {upload?:boolean} = {}): Promise<any> {
+  async request<T>(method: 'GET' | 'POST', path: string, body: BodyInit | undefined = undefined, { upload = false }: {upload?:boolean} = {}): Promise<T> {
     const isRead = method !== 'POST' || !path.startsWith('/uploads');
     this.enforceBudget(isRead);
     const access = await this.accessToken();
@@ -153,20 +179,22 @@ export class StravaClient {
     this.readBudgets(response.headers);
     if (response.status === 429) throw new RateLimitPause('Strava returned HTTP 429. Wait for the current rate-limit window and resume.');
     const text = await response.text();
-    let json;
-    try { json = text ? JSON.parse(text) : {}; } catch { json = { message: text.slice(0,500) }; }
+    let json: unknown;
+    try { json = text ? JSON.parse(text) : {}; }
+    catch { json = { message: text.slice(0, 500) }; }
     if (!response.ok) {
-      const desc = json.message || json.error || JSON.stringify(json).slice(0,500);
+      const body = json && typeof json === 'object' ? json as Record<string, unknown> : {};
+      const desc = String(body.message ?? body.error ?? JSON.stringify(json).slice(0, 500));
       const err = Object.assign(new Error(`Strava API ${response.status}: ${desc}`), { status: response.status });
       throw err;
     }
-    return json;
+    return json as T;
   }
 
-  activities(page: number): Promise<StravaActivitySummary[]> { return this.request('GET', `/athlete/activities?per_page=100&page=${page}`); }
+  activities(page: number): Promise<StravaActivitySummary[]> { return this.request<StravaActivitySummary[]>('GET', `/athlete/activities?per_page=100&page=${page}`); }
   activityDetail(id: string): Promise<StravaActivityDetail> {
     if (!/^[0-9]+$/.test(String(id))) throw new Error('Invalid Strava activity ID');
-    return this.request('GET', `/activities/${id}`);
+    return this.request<StravaActivityDetail>('GET', `/activities/${id}`);
   }
   upload(file: { path:string; digest:string; format:string }): Promise<StravaUploadResponse> {
     const form = new FormData();
@@ -174,8 +202,8 @@ export class StravaClient {
     form.set('file', new Blob([b]), `garmin-${file.digest}.${file.format}`);
     form.set('data_type', file.format);
     form.set('external_id', `garmin-migrate-${file.digest.slice(0,32)}`);
-    return this.request('POST', '/uploads', form, { upload: true });
+    return this.request<StravaUploadResponse>('POST', '/uploads', form, { upload: true });
   }
-  uploadStatus(id: string): Promise<StravaUploadResponse> { return this.request('GET', `/uploads/${encodeURIComponent(id)}`); }
+  uploadStatus(id: string): Promise<StravaUploadResponse> { return this.request<StravaUploadResponse>('GET', `/uploads/${encodeURIComponent(id)}`); }
 }
 
