@@ -81,7 +81,7 @@ export function garminPlan(store: Store) {
   const sample: Array<{id:string;start_utc:number|null;name:string|null;sport:string|null}> = [];
   for (const row of store.garminRows()) {
     if (row.file_status === 'uploaded' || row.state === 'uploaded') counts.uploaded++;
-    else if (['uncertain','failed','processing'].includes(row.file_status) || row.state === 'failed') counts.blocked++;
+    else if (['uncertain','failed','processing'].includes(row.file_status ?? '') || row.state === 'failed') counts.blocked++;
     else if (row.state === 'skipped' || row.file_status === 'skipped' || duplicateFor(row,store)) counts.alreadyOnStrava++;
     else if (row.file_status === 'pending' || row.state === 'staged') counts.staged++;
     else {
@@ -115,7 +115,7 @@ export async function stageGarmin(store: Store, client: Pick<GarminClient,'downl
   for (const row of store.garminRows()) {
     if (staged >= max) break;
     if (['skipped','uploaded'].includes(row.state) || row.file_status === 'uploaded') continue;
-    if (row.state === 'failed' || ['failed','uncertain','processing','skipped'].includes(row.file_status)) continue;
+    if (row.state === 'failed' || ['failed','uncertain','processing','skipped'].includes(row.file_status ?? '')) continue;
     if (row.file_digest && row.file_status === 'pending') {
       const stored = store.fileByDigest(row.file_digest);
       if (stored && existsSync(stored.path)) continue;

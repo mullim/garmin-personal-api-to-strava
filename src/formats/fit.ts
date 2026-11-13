@@ -27,7 +27,7 @@ export function inspectFit(buffer: Buffer): (FitMetadata & {fileType:number|null
     if (start + field.size > bytes.length) return null;
     const b = bytes.subarray(start, start + field.size);
     const size = field.size;
-    const unsigned = def.big ? (n) => b.readUIntBE(0, n) : (n) => b.readUIntLE(0, n);
+    const unsigned = def.big ? (n: number) => b.readUIntBE(0, n) : (n: number) => b.readUIntLE(0, n);
     if (size === 1) return b[0] === 0xff ? null : b[0];
     if (size === 2) { const v = unsigned(2); return v === 0xffff ? null : v; }
     if (size === 4) { const v = unsigned(4); return v === 0xffffffff ? null : v; }

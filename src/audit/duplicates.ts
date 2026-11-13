@@ -70,7 +70,7 @@ export function routeAgreement(polyA: string | null | undefined,polyB: string | 
   // Compare spatial coverage both ways, not index-to-index (device GPS sampling differs).
   // A repeated route alone is NOT a duplicate: the detector additionally requires time overlap.
   const sampledA=samples(a),sampledB=samples(b);
-  const coverage=(x,y)=>x.filter(p=>y.some(q=>haversineMeters(p,q)<=100)).length/x.length;
+  const coverage=(x: Array<[number,number]>,y: Array<[number,number]>)=>x.filter(p=>y.some(q=>haversineMeters(p,q)<=100)).length/x.length;
   return Math.round(Math.min(coverage(sampledA,sampledB),coverage(sampledB,sampledA))*100)/100;
 }
 
