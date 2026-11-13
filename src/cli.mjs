@@ -7,6 +7,7 @@ import { authorize, hasToken, StravaClient, RateLimitPause } from './strava.mjs'
 import { syncRemote, reconcile } from './migrate.mjs';
 import { discoverGarmin, printGarminPlan, runGarminMigration } from './garmin-import.mjs';
 import { findDuplicatePairs, enrichCandidateDetails, printDuplicatePairs, saveDuplicateReport } from './duplicates.mjs';
+import { findSensitivePairs } from './duplicates-sensitive.mjs';
 
 if (existsSync(resolve('.env'))) process.loadEnvFile(resolve('.env'));
 
@@ -23,6 +24,7 @@ Usage: node src/cli.mjs <command> [options]
   sync --refresh-strava        Reindex Strava for duplicate detection
   duplicates                   Audit all Strava workouts for overlapping duplicates
   duplicates --deep            Also fetch detailed metadata for candidates
+  duplicates --sensitive       Report more possible duplicates for manual review
   status                       Show migration status and attention items
 
 Options:
@@ -34,6 +36,7 @@ Options:
   --retry-uncertain            With resume --yes --refresh-strava ONLY, after
                                manually checking missing entries on Strava
   --deep                       For duplicates, fetch details of likely matches
+  --sensitive                  Broader read-only candidate detection; may include false positives
   --max-details N              Limit extra Strava detail requests (default 30)
   --min-confidence LEVEL       high, medium or review (default review)
   --out PATH                   Duplicate report base path (writes .csv and .json)
@@ -65,7 +68,7 @@ function parseFlags(args) {
         if (!['high','medium','review'].includes(value)) throw new Error('--min-confidence must be high, medium or review');
         values.minConfidence=value;
       } else values.out=value;
-    } else if (['--yes','--deep','--refresh-garmin','--refresh-strava','--retry-failed','--retry-uncertain'].includes(args[i])) {
+    } else if (['--yes','--deep','--sensitive','--refresh-garmin','--refresh-strava','--retry-failed','--retry-uncertain'].includes(args[i])) {
       flags.add(args[i]);
     } else throw new Error(`Unknown option: ${args[i]}`);
   }
@@ -120,10 +123,11 @@ async function main() {
       if (!hasToken(store.home)) throw new Error('Authorize Strava first with: node src/cli.mjs auth');
       const strava=new StravaClient(store.home);
       await syncRemote(store,strava,console.log,flags.has('--refresh-strava'));
-      let pairs=findDuplicatePairs(store.remoteAll());
+      const detect=flags.has('--sensitive') ? findSensitivePairs : findDuplicatePairs;
+      let pairs=detect(store.remoteAll());
       if (flags.has('--deep') && pairs.length) {
         await enrichCandidateDetails(store,strava,pairs,{max:values.maxDetails ?? 30});
-        pairs=findDuplicatePairs(store.remoteAll());
+        pairs=detect(store.remoteAll());
       }
       const severity={high:0,medium:1,review:2};
       pairs=pairs.filter(p=>severity[p.confidence]<=severity[values.minConfidence ?? 'review']);
