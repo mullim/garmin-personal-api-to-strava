@@ -36,11 +36,12 @@ function safeEntry(name: string): boolean {
 /** Return all safe, non-directory entry names, without extracting files. */
 export async function zipEntries(file: string): Promise<string[]> {
   const archive = await openArchive(file);
+  console.log('[DEBUGZIP] index opened', archive.entryCount);
   return new Promise((resolve, reject) => {
     const names: string[] = [];
     let seen = 0;
     let complete = false;
-    const finish = (error?: Error) => {
+    const finish = (error?: Error) => { console.log('[DEBUGZIP] index finish',error?.message);
       if (complete) return;
       complete = true;
       archive.close();
@@ -49,7 +50,7 @@ export async function zipEntries(file: string): Promise<string[]> {
     };
     archive.on('error', finish);
     archive.on('end', () => finish());
-    archive.on('entry', (entry: Entry) => {
+    archive.on('entry', (entry: Entry) => { console.log('[DEBUGZIP] got entry',entry.fileName);
       if (++seen > MAX_ENTRIES) {
         finish(new Error('Garmin activity ZIP has too many entries.'));
         return;
@@ -76,10 +77,11 @@ export async function extractEntry(
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('Invalid ZIP extraction size limit.');
   if (!safeEntry(entryName)) throw new Error('Unsafe ZIP entry path.');
   const archive = await openArchive(file);
+  console.log('[DEBUGZIP] extract opened', archive.entryCount, entryName);
   return new Promise((resolve, reject) => {
     let complete = false;
     let visited = 0;
-    const finish = (error?: Error, bytes?: Buffer | null) => {
+    const finish = (error?: Error, bytes?: Buffer | null) => { console.log('[DEBUGZIP] extract finish',error?.message,bytes?.length);
       if (complete) return;
       complete = true;
       archive.close();
