@@ -21,7 +21,7 @@ node src/cli.mjs duplicates --deep --max-details 100
 node src/cli.mjs duplicates --min-confidence high --out ./strava-review
 ```
 
-The audit produces CSV and JSON under `~/.garmin-api-to-strava/reports/` by default. The CSV contains clickable links to both activities plus distance, duration, start-time difference, percentage of overlapping elapsed time, potential device names, and a confidence label (`high`, `medium`, `review`).
+The audit uses **only your Strava OAuth connection**: no Garmin API request or Garmin key is needed for this command. It produces CSV and JSON under `~/.garmin-api-to-strava/reports/` by default. The CSV contains clickable links to both activities plus distance, duration, start-time difference, percentage of overlapping elapsed time, potential device names, and a confidence label (`high`, `medium`, `review`).
 
 **How matching works:** two sessions on the same day are NOT enough. The tool looks for meaningful UTC elapsed-time overlap and compatible sports (e.g. Run/TrailRun or WeightTraining/Workout). Distances and durations can differ between watches. For flagged pairs, optional `--deep` fetches route/device metadata and evaluates mapped route proximity when available. Two separate morning/evening strength sessions are not flagged. GPS is not required for strength-session matching.
 
