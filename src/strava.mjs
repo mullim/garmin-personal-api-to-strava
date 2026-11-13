@@ -157,7 +157,7 @@ export class StravaClient {
 
   activities(page) { return this.request('GET', `/athlete/activities?per_page=100&page=${page}`); }
   activityDetail(id) {
-    if (!/^\\d+$/.test(String(id))) throw new Error('Invalid Strava activity ID');
+    if (!/^[0-9]+$/.test(String(id))) throw new Error('Invalid Strava activity ID');
     return this.request('GET', `/activities/${id}`);
   }
   upload(file) {
