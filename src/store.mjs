@@ -57,6 +57,18 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS garmin_start ON garmin_activities(start_utc);
     `);
+    // Additive schema migration: existing migration databases remain intact.
+    const columns = new Set(this.db.prepare('PRAGMA table_info(remote_activities)').all().map(x => x.name));
+    for (const [name, type] of [
+      ['name','TEXT'],
+      ['device_name','TEXT'],
+      ['route_polyline','TEXT'],
+      ['manual','INTEGER'],
+      ['moving_seconds','REAL'],
+      ['detail_fetched_at','TEXT'],
+    ]) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE remote_activities ADD COLUMN ${name} ${type}`);
+    }
   }
 
   close() { this.db.close(); }
@@ -132,11 +144,34 @@ export class Store {
 
   clearRemote() { this.db.exec('DELETE FROM remote_activities'); }
   upsertRemote(a) {
-    this.db.prepare(`INSERT INTO remote_activities (id,start_utc,duration_seconds,distance_m,sport)
-      VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET start_utc=excluded.start_utc,
-      duration_seconds=excluded.duration_seconds, distance_m=excluded.distance_m, sport=excluded.sport`)
+    this.db.prepare(`INSERT INTO remote_activities
+      (id,start_utc,duration_seconds,distance_m,sport,name,route_polyline,manual,moving_seconds)
+      VALUES (?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET
+      start_utc=excluded.start_utc, duration_seconds=excluded.duration_seconds,
+      distance_m=excluded.distance_m, sport=excluded.sport,
+      name=excluded.name,route_polyline=COALESCE(excluded.route_polyline,remote_activities.route_polyline),
+      manual=excluded.manual, moving_seconds=excluded.moving_seconds`)
       .run(String(a.id_str ?? a.id), a.start_date ? Date.parse(a.start_date) / 1000 : null,
-        a.elapsed_time ?? null, a.distance ?? null, a.sport_type ?? a.type ?? null);
+        a.elapsed_time ?? null, a.distance ?? null, a.sport_type ?? a.type ?? null,
+        a.name ?? null, a.map?.summary_polyline ?? null, a.manual ? 1 : 0,
+        a.moving_time ?? null);
+  }
+  remoteAll() {
+    return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all();
+  }
+  remoteById(id) {
+    return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id));
+  }
+  updateRemoteDetail(id, detail) {
+    this.db.prepare(`UPDATE remote_activities
+      SET device_name=?,route_polyline=COALESCE(?,route_polyline),
+      detail_fetched_at=datetime('now')
+      WHERE id=?`).run(
+      detail.device_name ?? null,
+      detail.map?.polyline ?? detail.map?.summary_polyline ?? null,
+      String(id)
+    );
   }
   remoteNear(epoch) {
     if (epoch == null) return [];
