@@ -14,10 +14,10 @@ const groups = new Map<string,string>([
   ...['Rowing','VirtualRow'].map(x=>[x,'rowing'] as [string,string]),
 ]);
 const generic = new Set(['Workout','HighIntensityIntervalTraining','Other']);
-const numeric = x => x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x);
-const ratio = (x,y) => Math.min(x,y)/Math.max(x,y);
-const pairKey = (a,b) => [String(a.id),String(b.id)].sort().join('|');
-function group(x) { const s=String(x?.sport ?? ''); return groups.get(s) ?? (s ? s.toLowerCase() : null); }
+const numeric = (x: unknown): number | null => x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x);
+const ratio = (x: number,y: number) => Math.min(x,y)/Math.max(x,y);
+const pairKey = (a: RemoteActivity,b: RemoteActivity) => [String(a.id),String(b.id)].sort().join('|');
+function group(x: RemoteActivity | null | undefined): string | null { const s=String(x?.sport ?? ''); return groups.get(s) ?? (s ? s.toLowerCase() : null); }
 function broadPair(a: RemoteActivity,b: RemoteActivity): DuplicatePair | null {
   const sa=numeric(a.start_utc), sb=numeric(b.start_utc);
   const da=numeric(a.duration_seconds), db=numeric(b.duration_seconds);

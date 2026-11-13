@@ -3,12 +3,12 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 
-export function zipEntries(file) {
+export function zipEntries(file: string): string[] {
   const output = execFileSync('unzip', ['-Z', '-1', file], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   return output.split(/\r?\n/).filter(Boolean).filter(e => !e.endsWith('/') && !e.startsWith('__MACOSX/'));
 }
 
-export async function extractEntry(zip, entry, destination, maxBytes) {
+export async function extractEntry(zip: string, entry: string, destination: string | null, maxBytes: number): Promise<Buffer | null> {
   const child = spawn('unzip', ['-p', zip, entry], { stdio: ['ignore', 'pipe', 'pipe'] });
   const exitPromise = new Promise<number|null>((resolve,reject) => {child.once('close',resolve);child.once('error',reject);});
   let count=0;

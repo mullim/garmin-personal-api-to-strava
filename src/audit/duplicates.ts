@@ -1,4 +1,7 @@
-import type { RemoteActivity, DuplicatePair, Confidence } from '../domain/types.js';
+import type { RemoteActivity, DuplicatePair, Confidence, Logger } from '../domain/types.js';
+import type { Store } from '../persistence/store.js';
+import type { StravaClient } from '../integrations/strava.js';
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -13,11 +16,11 @@ const SPORT_GROUPS = new Map<string,string>([
   ...['Rowing','VirtualRow'].map(x=>[x,'rowing'] as [string,string]),
 ]);
 const confidenceRank = { high:0, medium:1, review:2 };
-const safeNum = v => v !== null && v !== undefined && Number.isFinite(Number(v)) ? Number(v) : null;
-const clamp01 = n => Math.max(0,Math.min(1,n));
-const percentage = n => n === null ? 'n/a' : `${Math.round(n*100)}%`;
+const safeNum = (v: unknown): number | null => v !== null && v !== undefined && Number.isFinite(Number(v)) ? Number(v) : null;
+const clamp01 = (n: number) => Math.max(0,Math.min(1,n));
+const percentage = (n: number | null) => n === null ? 'n/a' : `${Math.round(n*100)}%`;
 
-function category(sport) {
+function category(sport: string | null | undefined): string | null {
   if (!sport) return null;
   const raw = String(sport).trim();
   return SPORT_GROUPS.get(raw) ?? raw.toLowerCase();
@@ -50,14 +53,14 @@ export function decodePolyline(encoded: string | null | undefined): Array<[numbe
   } catch { return []; }
 }
 
-const toRad = x => x*Math.PI/180;
-function haversineMeters(a,b) {
+const toRad = (x: number) => x*Math.PI/180;
+function haversineMeters(a: [number,number],b: [number,number]): number {
   const dlat=toRad(b[0]-a[0]), dlon=toRad(b[1]-a[1]);
   const phi1=toRad(a[0]),phi2=toRad(b[0]);
   const q=Math.sin(dlat/2)**2+Math.cos(phi1)*Math.cos(phi2)*Math.sin(dlon/2)**2;
   return 12742000*Math.asin(Math.sqrt(Math.min(1,q)));
 }
-function samples(list, count=30) {
+function samples<T>(list: T[], count=30): T[] {
   if(list.length<=count) return list;
   return Array.from({length:count},(_,i)=>list[Math.round(i*(list.length-1)/(count-1))]);
 }
@@ -140,11 +143,11 @@ export function findDuplicatePairs(activities: RemoteActivity[],{minConfidence='
   return matches.sort((a,b)=>confidenceRank[a.confidence]-confidenceRank[b.confidence] || Number(b.a.start_utc)-Number(a.a.start_utc) || String(a.a.id).localeCompare(String(b.a.id)));
 }
 
-const csvCell = v => `"${String(v??'').replaceAll('"','""')}"`;
-export function toCsv(pairs) {
+const csvCell = (v: unknown) => `"${String(v??'').replaceAll('"','""')}"`;
+export function toCsv(pairs: DuplicatePair[]): string {
   const headers=['confidence','date_utc','type','a_id','a_name','a_device','a_start_utc','a_duration_min','a_distance_km','a_url','b_id','b_name','b_device','b_start_utc','b_duration_min','b_distance_km','b_url','start_delta_min','overlap_min','overlap_pct_union','overlap_pct_shorter','distance_similarity_pct','route_agreement_pct','reasons'];
-  const minutes=n=>n==null?'':(Number(n)/60).toFixed(1);
-  const kms=n=>n==null?'':(Number(n)/1000).toFixed(2);
+  const minutes=(n: number | null | undefined)=>n==null?'':(Number(n)/60).toFixed(1);
+  const kms=(n: number | null | undefined)=>n==null?'':(Number(n)/1000).toFixed(2);
   const rows=pairs.map(p=>{
     const {a,b,metrics:m}=p;
     return [p.confidence,new Date(Number(a.start_utc)*1000).toISOString().slice(0,10),p.sportGroup,
@@ -155,7 +158,7 @@ export function toCsv(pairs) {
   return [headers,...rows].map(line=>line.map(csvCell).join(',')).join('\n')+'\n';
 }
 
-export function saveDuplicateReport(store,pairs,{out=null,log=console.log}:{out?:string|null;log?:(line:string)=>void}={}) {
+export function saveDuplicateReport(store: Pick<Store,'home'|'getMeta'|'countRemote'>,pairs: DuplicatePair[],{out=null,log=console.log}:{out?:string|null;log?:(line:string)=>void}={}) {
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
   const base=out ?? join(store.home,'reports',`strava-duplicates-${stamp}`);
   const stem=base.replace(/\.(csv|json)$/i,'');
@@ -168,7 +171,7 @@ export function saveDuplicateReport(store,pairs,{out=null,log=console.log}:{out?
   return {csvPath,jsonPath};
 }
 
-export function printDuplicatePairs(pairs,{totalActivities=0,log=console.log}={}) {
+export function printDuplicatePairs(pairs: DuplicatePair[],{totalActivities=0,log=console.log}:{totalActivities?:number;log?:Logger}={}) {
   const n={high:0,medium:0,review:0};
   for(const p of pairs)n[p.confidence]++;
   log(`\nStrava duplicate audit — ${totalActivities} activities checked`);
@@ -190,7 +193,7 @@ export function printDuplicatePairs(pairs,{totalActivities=0,log=console.log}={}
 
 // Fetch full activity metadata only for suspicious pairs, not the entire history.
 // This is optional because it consumes additional Strava read API requests.
-export async function enrichCandidateDetails(store,client,pairs,{max=30,log=console.log}={}) {
+export async function enrichCandidateDetails(store: Pick<Store,'remoteById'|'updateRemoteDetail'>,client: Pick<StravaClient,'activityDetail'>,pairs: DuplicatePair[],{max=30,log=console.log}:{max?:number;log?:Logger}={}) {
   if (!Number.isSafeInteger(max) || max<0) throw new Error('max details must be a nonnegative integer');
   const ids=[...new Set(pairs.flatMap(p=>[String(p.a.id),String(p.b.id)]))];
   let fetched=0,cached=0,failed=0,rateLimited=false;

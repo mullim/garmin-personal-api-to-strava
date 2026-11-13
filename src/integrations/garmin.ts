@@ -42,7 +42,7 @@ export function garminApiKey() {
   throw new Error('Set GARMIN_PERSONAL_API_KEY in .env (create your key in Garmin Connect > Settings > Personal API Key).');
 }
 
-export function jwtExpiresAt(token) {
+export function jwtExpiresAt(token: string): number {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
     if (!Number.isFinite(Number(payload.exp))) throw new Error('missing exp');
@@ -61,7 +61,7 @@ export function normalizeGarminActivity(raw: Record<string, any>): GarminActivit
     const parsed = Date.parse(/[zZ]$|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
     if (Number.isFinite(parsed)) startUtc = Math.floor(parsed / 1000);
   }
-  const numOrNull = value => value != null && Number.isFinite(Number(value)) ? Number(value) : null;
+  const numOrNull = (value: unknown) => value != null && Number.isFinite(Number(value)) ? Number(value) : null;
   return {
     id,
     name: String(raw.activityName ?? raw.name ?? `Garmin ${id}`).slice(0, 200),
@@ -80,7 +80,7 @@ export class GarminClient {
   private nextRequest: number;
   private readonly tokenPath: string;
   private readonly cooldownPath: string;
-  constructor(home, fetchFn = fetch, { baseUrl = process.env.GARMIN_PERSONAL_API_BASE_URL || DEFAULT_BASE, minIntervalMs = Number(process.env.GARMIN_MIN_INTERVAL_MS ?? 2000) } = {}) {
+  constructor(home: string, fetchFn: typeof fetch = fetch, { baseUrl = process.env.GARMIN_PERSONAL_API_BASE_URL || DEFAULT_BASE, minIntervalMs = Number(process.env.GARMIN_MIN_INTERVAL_MS ?? 2000) }: {baseUrl?:string;minIntervalMs?:number} = {}) {
     this.home = home;
     this.fetchFn = fetchFn;
     this.base = baseUrl.replace(/\/$/, '');
@@ -103,7 +103,7 @@ export class GarminClient {
     }
   }
 
-  onRateLimit(response) {
+  onRateLimit(response: Response) {
     const now = Date.now();
     const prior = this.readCooldown();
     const strikes = prior?.lastAt && now - prior.lastAt < DAY ? Math.min(6, (prior.strikes || 0) + 1) : 1;
@@ -150,7 +150,7 @@ export class GarminClient {
     return token;
   }
 
-  async get(path, { accept = 'application/json', binary = false } = {}) {
+  async get(path: string, { accept = 'application/json', binary = false }: {accept?:string;binary?:boolean} = {}): Promise<any> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const token = await this.accessToken(attempt > 0);
       await this.throttle();
@@ -181,7 +181,7 @@ export class GarminClient {
     if (!Array.isArray(rows)) throw new Error('Unexpected Garmin activity-list response shape; please report the non-secret response structure.');
     return rows.map(normalizeGarminActivity);
   }
-  downloadActivity(id) {
+  downloadActivity(id: string): Promise<Buffer> {
     if (!/^\d+$/.test(String(id)) || BigInt(id) <= 0n) throw new Error('Invalid Garmin activity ID');
     return this.get(`/download-service/files/activity/${id}`, {
       binary: true, accept: 'application/zip, application/x-zip-compressed, application/octet-stream',

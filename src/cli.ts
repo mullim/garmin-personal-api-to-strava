@@ -48,7 +48,7 @@ Privacy: Strava uses your account's default visibility for uploads. Set it to
 'Only You' in Strava BEFORE importing if you want workouts private.
 `;
 
-function parseFlags(args) {
+function parseFlags(args: string[]) {
   const flags = new Set();
   const values: {max?: number;maxDetails?: number;minConfidence?: 'high'|'medium'|'review';out?:string} = {};
   for (let i=0; i<args.length; i++) {
@@ -75,7 +75,7 @@ function parseFlags(args) {
   return {flags,values};
 }
 
-function printStatus(store) {
+function printStatus(store: Store) {
   console.log(`\nLocal migration state: ${store.home}`);
   console.log(`Garmin activities indexed: ${store.countGarmin()}`);
   console.log(`Last complete Garmin discovery: ${store.getMeta('garmin_discovered_at') || 'not completed'}`);

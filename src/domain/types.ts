@@ -65,3 +65,52 @@ export interface DuplicatePair {
 }
 /** Callback passed to workflows, enabling silent tests and structured logging later. */
 export type Logger = (line: string) => void;
+
+// SQLite's persisted activity-file queue, shared by import and upload workflows.
+export interface FileRow {
+  digest: string;
+  path: string;
+  original_path: string;
+  format: string;
+  start_utc: number | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
+  sport: string | null;
+  status: string;
+  remote_activity_id: string | null;
+  upload_id: string | null;
+  error: string | null;
+  updated_at: string;
+}
+export interface ActivityFileInput {
+  digest: string;
+  path: string;
+  originalPath: string;
+  format: string;
+  startUtc?: number | null;
+  durationSeconds?: number | null;
+  distanceM?: number | null;
+  sport?: string | null;
+}
+export interface GarminRow {
+  id: string;
+  name: string | null;
+  start_utc: number | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
+  sport: string | null;
+  file_digest: string | null;
+  state: string;
+  remote_activity_id: string | null;
+  error: string | null;
+  file_status: string | null;
+  file_remote_id: string | null;
+}
+export type ComparableActivity = Pick<RemoteActivity,'start_utc'|'duration_seconds'|'distance_m'>;
+export interface FitMetadata {
+  isActivity: boolean;
+  startUtc: number | null;
+  durationSeconds: number | null;
+  distanceM: number | null;
+  sport: string | null;
+}

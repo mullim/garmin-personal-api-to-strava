@@ -92,7 +92,7 @@ export class StravaClient {
   private readonly fetchFn: typeof fetch;
   private token: StravaToken | null;
   private readonly budgets: { general: RateBudget | null; read: RateBudget | null };
-  constructor(home, fetchFn = fetch) {
+  constructor(home: string, fetchFn: typeof fetch = fetch) {
     this.home = home;
     this.fetchFn = fetchFn;
     this.token = hasToken(home) ? JSON.parse(readFileSync(join(home, 'token.json'), 'utf8')) : null;

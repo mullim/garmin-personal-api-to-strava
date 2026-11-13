@@ -1,9 +1,11 @@
 // Minimal read-only FIT inspector. We leave the original binary untouched for Strava.
 // It looks at the FIT file_id and session messages so daily wellness files stay out.
+import type { FitMetadata } from '../domain/types.js';
+
 const FIT_EPOCH = 631065600; // 1989-12-31T00:00:00Z
 const SPORT = new Map<number,string>([[1,'Run'],[2,'Ride'],[5,'Swim'],[10,'Workout'],[11,'Walk'],[13,'AlpineSki'],[14,'Snowboard'],[15,'Rowing'],[17,'Hike'],[19,'Paddling'],[21,'Sail'],[254,'Workout']]);
 
-export function inspectFit(buffer) {
+export function inspectFit(buffer: Buffer): (FitMetadata & {fileType:number|null;sawSession:boolean}) | null {
   if (buffer.length < 14 || buffer.toString('ascii', 8, 12) !== '.FIT') return null;
   const headerSize = buffer[0];
   if (headerSize < 12 || headerSize > buffer.length) return null;
@@ -18,7 +20,7 @@ export function inspectFit(buffer) {
   let durationSeconds: number | null = null;
   let distanceM: number | null = null;
   let sport: string | null = null;
-  function readField(bytes, def, num) {
+  function readField(bytes: Buffer, def: { big:boolean; global:number; fields:Array<{num:number;size:number}>; size:number }, num: number): number | null {
     const field = def.fields.find(f => f.num === num);
     if (!field || field.size < bytesFor(def, field)) return null;
     const start = def.fields.slice(0, def.fields.indexOf(field)).reduce((s, f) => s + f.size, 0);
@@ -32,7 +34,7 @@ export function inspectFit(buffer) {
     return null;
   }
   // Field-specific interpretation only depends on width, not generic FIT scale profile.
-  function bytesFor(_def, field) { return field.size; }
+  function bytesFor(_def: unknown, field: {size:number}) { return field.size; }
   try {
     while (pos < end) {
       const hdr = buffer[pos++];
@@ -84,7 +86,7 @@ export function inspectFit(buffer) {
   return { isActivity: fileType === 4 || sawSession, fileType, sawSession, startUtc, durationSeconds, distanceM, sport };
 }
 
-export function inspectXml(buffer, extension) {
+export function inspectXml(buffer: Buffer, extension: string): FitMetadata | null {
   const xml = buffer.toString('utf8');
   if (extension === 'gpx' && !/<(?:\w+:)?gpx[\s>]/i.test(xml)) return null;
   if (extension === 'tcx' && !/<(?:\w+:)?TrainingCenterDatabase[\s>]/i.test(xml)) return null;
