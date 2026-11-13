@@ -9,3 +9,12 @@ node_modules/
 *.sqlite
 *.sqlite-*
 token.json
+
+# Sensitive local migration reports and API tokens
+reports/
+strava-review.csv
+strava-review.json
+strava-duplicates-*.csv
+strava-duplicates-*.json
+garmin-token.json
+garmin-cooldown.json
