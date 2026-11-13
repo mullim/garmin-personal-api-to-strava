@@ -2,6 +2,32 @@
 
 Transfer **historical Garmin Connect activities directly using Garmin's official new Personal API**, without a Garmin account export or password scraping. Garmin activities are enumerated from its API and original FIT files are downloaded per activity, then sent to Strava using its official upload endpoint.
 
+## Audit duplicate Strava workouts (Apple Watch + Garmin)
+
+After importing workouts from Apple Watch via HealthFit and Garmin via this CLI, you may have overlapping recordings of the same session. The read-only duplicate audit scans **all Strava activities**, not just workouts imported by the CLI.
+
+```bash
+# Refresh the whole Strava inventory and flag overlapping sessions
+node src/cli.mjs duplicates --refresh-strava
+
+# Optional deeper check: fetch detailed device information and route polylines
+# only for suspicious pairs (up to 30 extra activity requests by default).
+node src/cli.mjs duplicates --deep
+
+# Raise the detailed-fetch cap within your Strava API read limits
+node src/cli.mjs duplicates --deep --max-details 100
+
+# Show high-confidence matches only; write reports to custom location
+node src/cli.mjs duplicates --min-confidence high --out ./strava-review
+```
+
+The audit produces CSV and JSON under `~/.garmin-api-to-strava/reports/` by default. The CSV contains clickable links to both activities plus distance, duration, start-time difference, percentage of overlapping elapsed time, potential device names, and a confidence label (`high`, `medium`, `review`).
+
+**How matching works:** two sessions on the same day are NOT enough. The tool looks for meaningful UTC elapsed-time overlap and compatible sports (e.g. Run/TrailRun or WeightTraining/Workout). Distances and durations can differ between watches. For flagged pairs, optional `--deep` fetches route/device metadata and evaluates mapped route proximity when available. Two separate morning/evening strength sessions are not flagged. GPS is not required for strength-session matching.
+
+**Safety:** This command never modifies or deletes anything on Strava. Matches are heuristic, not proof of duplication; review each pair before deleting either activity manually. Strava API rate limits apply to the initial activity inventory and optional detailed reads; completed page-by-page inventory sync can resume after throttling. The audit uses the last cached inventory if a complete sync was performed within 10 minutes; force `--refresh-strava` when you know newer Apple Watch activities have arrived.
+
+
 **Status:** Tested against mocked Garmin and Strava API responses, **not yet against your live Garmin/Strava accounts**. Test with three activities first. This is a personal, local-only tool; Garmin's Personal API is not for commercial multi-user services.
 
 ## Requirements
