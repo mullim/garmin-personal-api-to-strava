@@ -6,6 +6,7 @@ import { GarminClient, GarminPause } from './garmin.mjs';
 import { authorize, hasToken, StravaClient, RateLimitPause } from './strava.mjs';
 import { syncRemote, reconcile } from './migrate.mjs';
 import { discoverGarmin, printGarminPlan, runGarminMigration } from './garmin-import.mjs';
+import { findDuplicatePairs, enrichCandidateDetails, printDuplicatePairs, saveDuplicateReport } from './duplicates.mjs';
 
 if (existsSync(resolve('.env'))) process.loadEnvFile(resolve('.env'));
 
@@ -20,6 +21,8 @@ Usage: node src/cli.mjs <command> [options]
   import --yes --max 3          Download original FITs from Garmin API and upload 3
   resume --yes --max 10         Continue any interrupted migration
   sync --refresh-strava        Reindex Strava for duplicate detection
+  duplicates                   Audit all Strava workouts for overlapping duplicates
+  duplicates --deep            Also fetch detailed metadata for candidates
   status                       Show migration status and attention items
 
 Options:
@@ -30,6 +33,10 @@ Options:
   --retry-failed               With resume --yes, reattempt rejected Garmin downloads or Strava files
   --retry-uncertain            With resume --yes --refresh-strava ONLY, after
                                manually checking missing entries on Strava
+  --deep                       For duplicates, fetch details of likely matches
+  --max-details N              Limit extra Strava detail requests (default 30)
+  --min-confidence LEVEL       high, medium or review (default review)
+  --out PATH                   Duplicate report base path (writes .csv and .json)
 
 Setup: copy .env.example to .env, add GARMIN_PERSONAL_API_KEY and Strava API
 credentials, then run 'garmin-test', 'auth', and 'import'.
@@ -46,7 +53,19 @@ function parseFlags(args) {
       values.max = Number(args[++i]);
       if (!Number.isSafeInteger(values.max) || values.max < 1 || values.max > 1000)
         throw new Error('--max must be an integer between 1 and 1000');
-    } else if (['--yes','--refresh-garmin','--refresh-strava','--retry-failed','--retry-uncertain'].includes(args[i])) {
+    } else if (['--max-details','--min-confidence','--out'].includes(args[i])) {
+      const flag=args[i];
+      const value=args[++i];
+      if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value`);
+      if (flag === '--max-details') {
+        values.maxDetails = Number(value);
+        if (!Number.isSafeInteger(values.maxDetails) || values.maxDetails < 0 || values.maxDetails > 500)
+          throw new Error('--max-details must be between 0 and 500');
+      } else if (flag === '--min-confidence') {
+        if (!['high','medium','review'].includes(value)) throw new Error('--min-confidence must be high, medium or review');
+        values.minConfidence=value;
+      } else values.out=value;
+    } else if (['--yes','--deep','--refresh-garmin','--refresh-strava','--retry-failed','--retry-uncertain'].includes(args[i])) {
       flags.add(args[i]);
     } else throw new Error(`Unknown option: ${args[i]}`);
   }
@@ -93,6 +112,23 @@ async function main() {
       await syncRemote(store,new StravaClient(store.home),console.log,flags.has('--refresh-strava'));
       reconcile(store);
       printStatus(store);
+    } else if (cmd === 'duplicates') {
+      if (flags.has('--yes') || flags.has('--retry-failed') || flags.has('--retry-uncertain') ||
+          flags.has('--refresh-garmin') || values.max !== undefined) {
+        throw new Error('duplicates is read-only and does not accept migration upload flags');
+      }
+      if (!hasToken(store.home)) throw new Error('Authorize Strava first with: node src/cli.mjs auth');
+      const strava=new StravaClient(store.home);
+      await syncRemote(store,strava,console.log,flags.has('--refresh-strava'));
+      let pairs=findDuplicatePairs(store.remoteAll());
+      if (flags.has('--deep') && pairs.length) {
+        await enrichCandidateDetails(store,strava,pairs,{max:values.maxDetails ?? 30});
+        pairs=findDuplicatePairs(store.remoteAll());
+      }
+      const severity={high:0,medium:1,review:2};
+      pairs=pairs.filter(p=>severity[p.confidence]<=severity[values.minConfidence ?? 'review']);
+      printDuplicatePairs(pairs,{totalActivities:store.countRemote()});
+      saveDuplicateReport(store,pairs,{out:values.out ? resolve(values.out) : null});
     } else if (cmd === 'import' || cmd === 'resume') {
       if (!hasToken(store.home)) throw new Error('Authorize Strava first with: node src/cli.mjs auth');
       if (cmd === 'resume' && !flags.has('--yes')) throw new Error('Resume requires --yes. To preview safely, run import.');
