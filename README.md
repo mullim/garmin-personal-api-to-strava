@@ -10,6 +10,9 @@ After importing workouts from Apple Watch via HealthFit and Garmin via this CLI,
 # Refresh the whole Strava inventory and flag overlapping sessions
 node src/cli.mjs duplicates --refresh-strava
 
+# Search more broadly for possible double-watch recordings (read-only)
+node src/cli.mjs duplicates --refresh-strava --sensitive
+
 # Optional deeper check: fetch detailed device information and route polylines
 # only for suspicious pairs (up to 30 extra activity requests by default).
 node src/cli.mjs duplicates --deep
@@ -22,6 +25,8 @@ node src/cli.mjs duplicates --min-confidence high --out ./strava-review
 ```
 
 The audit uses **only your Strava OAuth connection**: no Garmin API request or Garmin key is needed for this command. It produces CSV and JSON under `~/.garmin-api-to-strava/reports/` by default. The CSV contains clickable links to both activities plus distance, duration, start-time difference, percentage of overlapping elapsed time, potential device names, and a confidence label (`high`, `medium`, `review`).
+
+**Sensitive mode:** `--sensitive` adds review-only candidates the default algorithm misses: partially contained recordings, staggered starts, and mislabeled sport types such as Run versus Workout. These *additional* matches are always marked `review`, not `high`, and may contain false positives. Run it after a complete Strava refresh to include recent HealthFit imports. `--sensitive --deep` fetches detailed data for this wider set of candidate pairs (subject to Strava API rate limits). No activities are modified or deleted.
 
 **How matching works:** two sessions on the same day are NOT enough. The tool looks for meaningful UTC elapsed-time overlap and compatible sports (e.g. Run/TrailRun or WeightTraining/Workout). Distances and durations can differ between watches. For flagged pairs, optional `--deep` fetches route/device metadata and evaluates mapped route proximity when available. Two separate morning/evening strength sessions are not flagged. GPS is not required for strength-session matching.
 
