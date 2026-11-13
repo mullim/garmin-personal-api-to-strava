@@ -1,4 +1,4 @@
-import { evaluatePair, findDuplicatePairs, routeAgreement } from './duplicates.mjs';
+import { findDuplicatePairs, routeAgreement } from './duplicates.mjs';
 
 // Broad, read-only review mode. The normal duplicate detector is intentionally
 // conservative. This adds plausible overlaps that it excluded, and NEVER
