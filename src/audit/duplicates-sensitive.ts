@@ -1,4 +1,5 @@
-import { findDuplicatePairs, routeAgreement } from './duplicates.mjs';
+import type { RemoteActivity, DuplicatePair } from '../domain/types.js';
+import { findDuplicatePairs, routeAgreement } from './duplicates.js';
 
 // Broad, read-only review mode. The normal duplicate detector is intentionally
 // conservative. This adds plausible overlaps that it excluded, and NEVER
@@ -58,7 +59,7 @@ function broadPair(a,b) {
   };
 }
 
-export function findSensitivePairs(activities) {
+export function findSensitivePairs(activities: RemoteActivity[]): DuplicatePair[] {
   const strict=findDuplicatePairs(activities);
   const results=new Map(strict.map(p=>[pairKey(p.a,p.b),p]));
   const rows=activities.filter(a=>numeric(a.start_utc)!==null && numeric(a.duration_seconds)>=60 && group(a))

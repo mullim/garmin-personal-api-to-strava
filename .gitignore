@@ -18,3 +18,6 @@ strava-duplicates-*.csv
 strava-duplicates-*.json
 garmin-token.json
 garmin-cooldown.json
+
+dist/
+*.tsbuildinfo

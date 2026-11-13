@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import type { GarminActivity, RemoteActivity } from '../domain/types.js';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -73,7 +74,7 @@ export class Store {
 
   close() { this.db.close(); }
 
-  addGarmin(a) {
+  addGarmin(a: GarminActivity) {
     this.db.prepare(`INSERT INTO garmin_activities (id,name,start_utc,duration_seconds,distance_m,sport)
       VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, start_utc=excluded.start_utc,
@@ -157,10 +158,10 @@ export class Store {
         a.name ?? null, a.map?.summary_polyline ?? null, a.manual ? 1 : 0,
         a.moving_time ?? null);
   }
-  remoteAll() {
+  remoteAll(): RemoteActivity[] {
     return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all();
   }
-  remoteById(id) {
+  remoteById(id: string): RemoteActivity | undefined {
     return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id));
   }
   updateRemoteDetail(id, detail) {
@@ -173,7 +174,7 @@ export class Store {
       String(id)
     );
   }
-  remoteNear(epoch) {
+  remoteNear(epoch: number | null): RemoteActivity[] {
     if (epoch == null) return [];
     return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3);
   }

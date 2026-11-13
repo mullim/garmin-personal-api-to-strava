@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { zipEntries, extractEntry } from './zip.mjs';
-import { inspectFit, inspectXml } from './fit.mjs';
-import { duplicateFor, reconcile, migrate } from './migrate.mjs';
+import { zipEntries, extractEntry } from '../formats/zip.js';
+import { inspectFit, inspectXml } from '../formats/fit.js';
+import { duplicateFor, reconcile, migrate } from './migrate.js';
 
 const MAX_FILE = 64 * 1024 * 1024;
 const PAGE_SIZE = 20;

@@ -4,9 +4,13 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 
+import type { StravaActivitySummary, StravaActivityDetail, StravaUploadResponse } from '../domain/types.js';
+
 const AUTH = 'https://www.strava.com';
 function apiBase() { return process.env.STRAVA_API_BASE || 'https://www.strava.com/api/v3'; }
 const PORT = 37541;
+interface RateBudget { shortLimit:number; dayLimit:number; shortUsed:number; dayUsed:number; }
+
 export class RateLimitPause extends Error {
   constructor(message) { super(message); this.name = 'RateLimitPause'; }
 }
@@ -87,7 +91,7 @@ export class StravaClient {
     this.home = home;
     this.fetchFn = fetchFn;
     this.token = hasToken(home) ? JSON.parse(readFileSync(join(home, 'token.json'), 'utf8')) : null;
-    this.budgets = { general: null, read: null };
+    this.budgets = { general: null, read: null } as { general: RateBudget | null; read: RateBudget | null };
   }
 
   async accessToken() {
@@ -134,7 +138,7 @@ export class StravaClient {
     let response;
     try {
       response = await this.fetchFn(`${apiBase()}${path}`, {
-        method, headers: { Authorization: `Bearer ${access}` }, ...(body ? { body } : {})
+        method, headers: { Authorization: `Bearer ${access}` }, signal: AbortSignal.timeout(30_000), ...(body ? { body } : {})
       });
     } catch (err) {
       // A POST may have succeeded server-side; don't automatically submit twice.
@@ -155,12 +159,12 @@ export class StravaClient {
     return json;
   }
 
-  activities(page) { return this.request('GET', `/athlete/activities?per_page=100&page=${page}`); }
-  activityDetail(id) {
+  activities(page: number): Promise<StravaActivitySummary[]> { return this.request('GET', `/athlete/activities?per_page=100&page=${page}`); }
+  activityDetail(id: string): Promise<StravaActivityDetail> {
     if (!/^[0-9]+$/.test(String(id))) throw new Error('Invalid Strava activity ID');
     return this.request('GET', `/activities/${id}`);
   }
-  upload(file) {
+  upload(file: { path:string; digest:string; format:string }): Promise<StravaUploadResponse> {
     const form = new FormData();
     const b = readFileSync(file.path);
     form.set('file', new Blob([b]), `garmin-${file.digest}.${file.format}`);
@@ -168,6 +172,6 @@ export class StravaClient {
     form.set('external_id', `garmin-migrate-${file.digest.slice(0,32)}`);
     return this.request('POST', '/uploads', form, { upload: true });
   }
-  uploadStatus(id) { return this.request('GET', `/uploads/${encodeURIComponent(id)}`); }
+  uploadStatus(id: string): Promise<StravaUploadResponse> { return this.request('GET', `/uploads/${encodeURIComponent(id)}`); }
 }
 

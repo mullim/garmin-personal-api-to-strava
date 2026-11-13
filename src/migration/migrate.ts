@@ -1,8 +1,9 @@
-import { RateLimitPause } from './strava.mjs';
+import type { RemoteActivity } from '../domain/types.js';
+import { RateLimitPause } from '../integrations/strava.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-export function isLikelyDuplicate(local, remote) {
+export function isLikelyDuplicate(local: {start_utc: number|null; distance_m: number|null; duration_seconds: number|null}, remote: Pick<RemoteActivity,'start_utc'|'distance_m'|'duration_seconds'>): boolean {
   if (local.start_utc == null || remote.start_utc == null) return false;
   if (Math.abs(local.start_utc - remote.start_utc) > 3) return false;
   if (local.distance_m != null && remote.distance_m != null && local.distance_m > 0 && remote.distance_m > 0) {

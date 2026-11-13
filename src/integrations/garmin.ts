@@ -3,11 +3,14 @@ import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Official Garmin Connect Personal API: https://developer.garmin.com/gc-developer-program/personal/swagger-docs/
+import type { GarminActivity } from '../domain/types.js';
+
 const DEFAULT_BASE = 'https://personal.connectapi.garmin.com';
 const TOKEN_PATH = '/personalapitoken-service/personal-api/personal-api-key/token';
 const MAX_DOWNLOAD = 64 * 1024 * 1024;
 
 export class GarminPause extends Error {
+  readonly retryAt: number | null;
   constructor(message, retryAt = null) {
     super(message);
     this.name = 'GarminPause';
@@ -47,7 +50,7 @@ export function jwtExpiresAt(token) {
   } catch { throw new Error('Garmin token response was not a JWT with an exp claim.'); }
 }
 
-export function normalizeGarminActivity(raw) {
+export function normalizeGarminActivity(raw: Record<string, any>): GarminActivity {
   const id = String(raw?.activityId ?? raw?.id ?? '');
   if (!/^\d+$/.test(id) || Number(id) <= 0) throw new Error('Garmin returned an activity without a valid positive numeric activityId');
   const date = raw.startTimeGMT ?? raw.startTimeUTC ?? raw.startTimeUtc ?? null;
@@ -165,7 +168,7 @@ export class GarminClient {
   }
 
   async testConnection() { return this.get('/userprofile-service/userprofile/settings'); }
-  async activities(start = 0, limit = 20) {
+  async activities(start = 0, limit = 20): Promise<GarminActivity[]> {
     const result = await this.get(`/activitylist-service/activities/search/activities?start=${start}&limit=${limit}`);
     const rows = Array.isArray(result) ? result : result?.activities;
     if (!Array.isArray(rows)) throw new Error('Unexpected Garmin activity-list response shape; please report the non-secret response structure.');

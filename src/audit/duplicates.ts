@@ -1,3 +1,4 @@
+import type { RemoteActivity, DuplicatePair } from '../domain/types.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -22,7 +23,7 @@ function category(sport) {
   return SPORT_GROUPS.get(raw) ?? raw.toLowerCase();
 }
 
-export function decodePolyline(encoded) {
+export function decodePolyline(encoded: string | null | undefined): Array<[number,number]> {
   if (typeof encoded !== 'string' || !encoded || encoded.length > 500000) return [];
   const points=[];
   let index=0, lat=0,lon=0;
@@ -59,7 +60,7 @@ function samples(list, count=30) {
   if(list.length<=count) return list;
   return Array.from({length:count},(_,i)=>list[Math.round(i*(list.length-1)/(count-1))]);
 }
-export function routeAgreement(polyA,polyB) {
+export function routeAgreement(polyA: string | null | undefined,polyB: string | null | undefined): number | null {
   const a=decodePolyline(polyA),b=decodePolyline(polyB);
   if(a.length<3||b.length<3) return null;
   // Compare spatial coverage both ways, not index-to-index (device GPS sampling differs).
@@ -69,7 +70,7 @@ export function routeAgreement(polyA,polyB) {
   return Math.round(Math.min(coverage(sampledA,sampledB),coverage(sampledB,sampledA))*100)/100;
 }
 
-export function evaluatePair(a,b) {
+export function evaluatePair(a: RemoteActivity, b: RemoteActivity): DuplicatePair | null {
   if(a?.id == null || b?.id == null || String(a.id)===String(b.id)) return null;
   const sportA=category(a.sport),sportB=category(b.sport);
   if(!sportA || sportA!==sportB) return null;
@@ -115,7 +116,7 @@ export function evaluatePair(a,b) {
   };
 }
 
-export function findDuplicatePairs(activities,{minConfidence='review'}={}) {
+export function findDuplicatePairs(activities: RemoteActivity[],{minConfidence='review'}:{minConfidence?: 'high'|'medium'|'review'}={}): DuplicatePair[] {
   if(!(minConfidence in confidenceRank)) throw new Error('minConfidence must be high, medium, or review');
   const rows=activities.filter(a=>safeNum(a.start_utc)!==null && safeNum(a.duration_seconds)>=60 && category(a.sport))
     .slice().sort((a,b)=>Number(a.start_utc)-Number(b.start_utc));

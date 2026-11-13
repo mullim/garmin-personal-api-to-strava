@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { inspectFit, inspectXml } from '../src/fit.mjs';
-import { Store } from '../src/store.mjs';
-import { isLikelyDuplicate, duplicateFor, syncRemote, reconcile, migrate } from '../src/migrate.mjs';
+import { inspectFit, inspectXml } from '../dist/formats/fit.js';
+import { Store } from '../dist/persistence/store.js';
+import { isLikelyDuplicate, duplicateFor, syncRemote, reconcile, migrate } from '../dist/migration/migrate.js';
 
 function definition(local, global, fields) {
   const b = Buffer.alloc(6 + fields.length*3);
@@ -122,7 +122,7 @@ test('network failure on upload is treated as uncertain and never blindly retrie
 });
 
 test('Strava client sends real multipart FIT bytes and a deterministic external ID', async () => {
-  const { StravaClient } = await import('../src/strava.mjs');
+  const { StravaClient } = await import('../dist/integrations/strava.js');
   const dir = temp();
   try {
     writeFileSync(join(dir,'token.json'),JSON.stringify({access_token:'test-access',refresh_token:'refresh',expires_at:Math.floor(Date.now()/1000)+3600}));

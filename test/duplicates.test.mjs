@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {findDuplicatePairs,evaluatePair,toCsv,decodePolyline,routeAgreement,saveDuplicateReport} from '../src/duplicates.mjs';
+import {findDuplicatePairs,evaluatePair,toCsv,decodePolyline,routeAgreement,saveDuplicateReport} from '../dist/audit/duplicates.js';
 
 const at=(h,m)=>Math.floor(Date.parse(`2026-11-12T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00Z`)/1000);
 const act=(id,start,duration,sport='Run',dist=5000,extra={})=>({id:String(id),start_utc:start,duration_seconds:duration*60,sport,distance_m:dist,name:`Workout ${id}`,...extra});
@@ -70,7 +70,7 @@ test('CSV properly quotes commas and quotes and report writes CSV and JSON',()=>
 });
 
 test('deep enrichment fetches only flagged IDs, caches detail, and respects limits',async()=>{
-  const {enrichCandidateDetails}=await import('../src/duplicates.mjs');
+  const {enrichCandidateDetails}=await import('../dist/audit/duplicates.js');
   const pairs=findDuplicatePairs([
     act('1',at(8,0),45,'Run',5000),act('2',at(8,1),45,'Run',5020),
     act('3',at(18,0),40,'Run',5000)
@@ -87,7 +87,7 @@ test('deep enrichment fetches only flagged IDs, caches detail, and respects limi
 });
 
 test('deep enrichment stops cleanly on Strava read budget',async()=>{
-  const {enrichCandidateDetails}=await import('../src/duplicates.mjs');
+  const {enrichCandidateDetails}=await import('../dist/audit/duplicates.js');
   const pairs=findDuplicatePairs([act('1',at(8,0),40),act('2',at(8,1),40)]);
   const result=await enrichCandidateDetails({remoteById:()=>null}, {activityDetail:async()=>{const e=new Error('rate limit');e.name='RateLimitPause';throw e;}},pairs,{log:()=>{}});
   assert.equal(result.rateLimited,true);
