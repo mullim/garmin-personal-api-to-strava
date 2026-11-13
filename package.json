@@ -1,6 +1,6 @@
 {
   "name": "garmin-personal-api-to-strava",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Local-first, resumable Garmin Connect Personal API to Strava migration CLI",
