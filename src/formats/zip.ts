@@ -38,6 +38,7 @@ export async function zipEntries(file: string): Promise<string[]> {
   const archive = await openArchive(file);
   return new Promise((resolve, reject) => {
     const names: string[] = [];
+    let seen = 0;
     let complete = false;
     const finish = (error?: Error) => {
       if (complete) return;
@@ -49,14 +50,18 @@ export async function zipEntries(file: string): Promise<string[]> {
     archive.on('error', finish);
     archive.on('end', () => finish());
     archive.on('entry', (entry: Entry) => {
-      if (names.length >= MAX_ENTRIES) {
+      if (++seen > MAX_ENTRIES) {
         finish(new Error('Garmin activity ZIP has too many entries.'));
         return;
       }
       if (safeEntry(entry.fileName)) names.push(entry.fileName);
-      archive.readEntry();
+      // Count instead of relying on ZIP's end event, which may not fire
+      // when autoClose is disabled or the last entry has already been read.
+      if (seen === archive.entryCount) finish();
+      else archive.readEntry();
     });
-    archive.readEntry();
+    if (archive.entryCount === 0) finish();
+    else archive.readEntry();
   });
 }
 
