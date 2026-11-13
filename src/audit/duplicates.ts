@@ -1,9 +1,9 @@
-import type { RemoteActivity, DuplicatePair } from '../domain/types.js';
+import type { RemoteActivity, DuplicatePair, Confidence } from '../domain/types.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 // Audit, don't delete. Same-day sessions are NOT duplicates without time overlap.
-const SPORT_GROUPS = new Map([
+const SPORT_GROUPS = new Map<string,string>([
   ...['Run','TrailRun','VirtualRun'].map(x => [x,'running']),
   ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x=>[x,'cycling']),
   ...['Walk','Hike'].map(x=>[x,'walking']),
@@ -25,13 +25,14 @@ function category(sport) {
 
 export function decodePolyline(encoded: string | null | undefined): Array<[number,number]> {
   if (typeof encoded !== 'string' || !encoded || encoded.length > 500000) return [];
-  const points=[];
+  const points: Array<[number,number]> = [];
+  const source = encoded as string;
   let index=0, lat=0,lon=0;
   function number() {
     let result=0,shift=0,b;
     do {
-      if(index>=encoded.length || shift>30) throw Error('invalid polyline');
-      b=encoded.charCodeAt(index++)-63;
+      if(index>=source.length || shift>30) throw Error('invalid polyline');
+      b=source.charCodeAt(index++)-63;
       if(b<0 || b>63) throw Error('invalid polyline');
       result |= (b&0x1f)<<shift;
       shift+=5;
@@ -39,7 +40,7 @@ export function decodePolyline(encoded: string | null | undefined): Array<[numbe
     return (result&1) ? ~(result>>1) : result>>1;
   }
   try {
-    while(index<encoded.length && points.length<10000) {
+    while(index<source.length && points.length<10000) {
       lat+=number();lon+=number();
       const a=lat/1e5,b=lon/1e5;
       if(Math.abs(a)>90 || Math.abs(b)>180) return [];
@@ -89,7 +90,7 @@ export function evaluatePair(a: RemoteActivity, b: RemoteActivity): DuplicatePai
   const distSimilarity=(distA!==null && distB!==null && distA>100 && distB>100) ? Math.min(distA,distB)/Math.max(distA,distB) : null;
   const routeSimilarity=routeAgreement(a.route_polyline,b.route_polyline);
   const bothManual=Boolean(a.manual) && Boolean(b.manual);
-  let confidence='review';
+  let confidence: Confidence = 'review';
   if(union>=0.78 && durationSimilarity>=0.8 && startDelta<=300 && (distSimilarity===null || distSimilarity>=0.78)) confidence='high';
   else if(union>=0.55 && durationSimilarity>=0.65 && startDelta<=900 && (distSimilarity===null || distSimilarity>=0.58)) confidence='medium';
   if(routeSimilarity!==null && routeSimilarity>=0.78 && union>=0.64 && durationSimilarity>=0.65) {
@@ -99,7 +100,7 @@ export function evaluatePair(a: RemoteActivity, b: RemoteActivity): DuplicatePai
   // polyline redaction and GPS inaccuracies can disagree across watches.
   if(routeSimilarity!==null && routeSimilarity<0.3 && confidence==='high') confidence='medium';
   if(bothManual && confidence==='high') confidence='medium';
-  const notes=[];
+  const notes: string[] = [];
   if(startDelta<=300) notes.push('starts within 5 minutes');
   if(union>=0.7) notes.push('strong time-window overlap');
   if(distSimilarity!==null && distSimilarity>=0.8) notes.push('similar distance');
@@ -118,12 +119,12 @@ export function evaluatePair(a: RemoteActivity, b: RemoteActivity): DuplicatePai
 
 export function findDuplicatePairs(activities: RemoteActivity[],{minConfidence='review'}:{minConfidence?: 'high'|'medium'|'review'}={}): DuplicatePair[] {
   if(!(minConfidence in confidenceRank)) throw new Error('minConfidence must be high, medium, or review');
-  const rows=activities.filter(a=>safeNum(a.start_utc)!==null && safeNum(a.duration_seconds)>=60 && category(a.sport))
+  const rows=activities.filter(a=>safeNum(a.start_utc)!==null && (safeNum(a.duration_seconds) ?? 0)>=60 && category(a.sport))
     .slice().sort((a,b)=>Number(a.start_utc)-Number(b.start_utc));
-  const matches=[];
+  const matches: DuplicatePair[]=[];
   // Sweep-line: any potentially overlapping previous recording can match,
   // including activities spanning midnight. Avoid naive O(n²) full history scans.
-  const active=[];
+  const active: RemoteActivity[]=[];
   for(const current of rows) {
     const start=Number(current.start_utc);
     for(let i=active.length-1;i>=0;i--){
@@ -154,7 +155,7 @@ export function toCsv(pairs) {
   return [headers,...rows].map(line=>line.map(csvCell).join(',')).join('\n')+'\n';
 }
 
-export function saveDuplicateReport(store,pairs,{out=null,log=console.log}={}) {
+export function saveDuplicateReport(store,pairs,{out=null,log=console.log}:{out?:string|null;log?:(line:string)=>void}={}) {
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
   const base=out ?? join(store.home,'reports',`strava-duplicates-${stamp}`);
   const stem=base.replace(/\.(csv|json)$/i,'');
@@ -202,13 +203,13 @@ export async function enrichCandidateDetails(store,client,pairs,{max=30,log=cons
       store.updateRemoteDetail(id,detail);
       fetched++;
     } catch(err) {
-      if(err.name==='RateLimitPause') {
+      if(err instanceof Error && err.name==='RateLimitPause') {
         rateLimited=true;
-        log(`Strava read limit reached during optional detail checks: ${err.message}`);
+        log(`Strava read limit reached during optional detail checks: ${(err instanceof Error ? err.message : String(err))}`);
         break;
       }
       failed++;
-      log(`Could not fetch details for ${id}: ${err.message}`);
+      log(`Could not fetch details for ${id}: ${(err instanceof Error ? err.message : String(err))}`);
     }
   }
   log(`Detailed activity checks: ${fetched} fetched, ${cached} cached, ${failed} unavailable${rateLimited?', stopped at Strava rate limit':''}.`);

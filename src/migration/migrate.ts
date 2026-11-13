@@ -120,9 +120,10 @@ export async function migrate(store, client, { max = 25, log = console.log } = {
       if (err instanceof RateLimitPause) throw err;
       // Request may have reached Strava despite 5xx/network failure. Mark it
       // uncertain, and never automatically retry it.
-      const uncertain = !err.status || err.status >= 500;
-      store.updateFile(file.digest, uncertain ? 'uncertain' : 'failed', { error:err.message });
-      log(`  ${uncertain ? 'Uncertain outcome' : 'Rejected'}: ${err.message}`);
+      const status = err && typeof err === 'object' && 'status' in err && typeof err.status === 'number' ? err.status : undefined;
+      const uncertain = !status || status >= 500;
+      store.updateFile(file.digest, uncertain ? 'uncertain' : 'failed', { error:err instanceof Error ? err.message : String(err) });
+      log(`  ${uncertain ? 'Uncertain outcome' : 'Rejected'}: ${err instanceof Error ? err.message : String(err)}`);
       if (uncertain) throw new Error('Upload outcome uncertain. Run sync, inspect Strava, then use --retry-uncertain only after confirming it is missing.');
       continue;
     }

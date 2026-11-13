@@ -9,6 +9,8 @@ export function getHome() {
 }
 
 export class Store {
+  readonly home: string;
+  private readonly db: DatabaseSync;
   constructor(home = getHome()) {
     this.home = home;
     mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -126,7 +128,7 @@ export class Store {
     return this.db.prepare(`SELECT * FROM files WHERE status IN (${placeholders}) ORDER BY start_utc ASC, original_path ASC`).all(...statuses);
   }
 
-  updateFile(digest, status, fields = {}) {
+  updateFile(digest: string, status: string, fields: {remoteActivityId?:string|null;uploadId?:string|null;error?:string|null} = {}) {
     this.db.prepare(`UPDATE files SET status=?, remote_activity_id=COALESCE(?,remote_activity_id),
       upload_id=COALESCE(?,upload_id), error=?, updated_at=datetime('now') WHERE digest=?`)
       .run(status, fields.remoteActivityId ?? null, fields.uploadId ?? null, fields.error ?? null, digest);
@@ -159,10 +161,10 @@ export class Store {
         a.moving_time ?? null);
   }
   remoteAll(): RemoteActivity[] {
-    return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all();
+    return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all() as unknown as RemoteActivity[];
   }
   remoteById(id: string): RemoteActivity | undefined {
-    return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id));
+    return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id)) as unknown as RemoteActivity | undefined;
   }
   updateRemoteDetail(id, detail) {
     this.db.prepare(`UPDATE remote_activities
@@ -176,7 +178,7 @@ export class Store {
   }
   remoteNear(epoch: number | null): RemoteActivity[] {
     if (epoch == null) return [];
-    return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3);
+    return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3) as unknown as RemoteActivity[];
   }
   countRemote() { return this.db.prepare('SELECT COUNT(*) AS n FROM remote_activities').get().n; }
   counts() { return this.db.prepare('SELECT status, COUNT(*) AS count FROM files GROUP BY status ORDER BY status').all(); }

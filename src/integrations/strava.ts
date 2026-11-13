@@ -12,7 +12,7 @@ const PORT = 37541;
 interface RateBudget { shortLimit:number; dayLimit:number; shortUsed:number; dayUsed:number; }
 
 export class RateLimitPause extends Error {
-  constructor(message) { super(message); this.name = 'RateLimitPause'; }
+  constructor(message: string) { super(message); this.name = 'RateLimitPause'; }
 }
 
 export function readCredentials() {
@@ -22,21 +22,21 @@ export function readCredentials() {
   return { id, secret };
 }
 
-export function hasToken(home) { return existsSync(join(home, 'token.json')); }
-function saveToken(home, token) {
+export function hasToken(home: string) { return existsSync(join(home, 'token.json')); }
+function saveToken(home: string, token: StravaToken) {
   const path = join(home, 'token.json');
   writeFileSync(path, JSON.stringify(token, null, 2), { mode: 0o600 });
   chmodSync(path, 0o600);
 }
 
-async function tokenRequest(form, fetchFn = fetch) {
+async function tokenRequest(form: Record<string,string>, fetchFn: typeof fetch = fetch): Promise<StravaToken> {
   const response = await fetchFn(`${AUTH}/oauth/token`, { method: 'POST', body: new URLSearchParams(form) });
   const json = await response.json();
   if (!response.ok) throw new Error(`Strava authentication failed (${response.status}): ${json.message ?? JSON.stringify(json)}`);
   return json;
 }
 
-export async function authorize(home) {
+export async function authorize(home: string) {
   const { id, secret } = readCredentials();
   const state = randomBytes(20).toString('hex');
   const redirect = `http://localhost:${PORT}/callback`;
@@ -44,9 +44,9 @@ export async function authorize(home) {
   Object.entries({ client_id: id, redirect_uri: redirect, response_type: 'code', approval_prompt: 'force', scope: 'activity:read_all,activity:write', state })
     .forEach(([key,value]) => url.searchParams.set(key,value));
 
-  let done;
-  let fail;
-  const completion = new Promise((resolve,reject) => { done=resolve; fail=reject; });
+  let done!: () => void;
+  let fail!: (error: Error) => void;
+  const completion = new Promise<void>((resolve,reject) => { done=resolve; fail=reject; });
   const server = createServer(async (req,res) => {
     try {
       const query = new URL(req.url ?? '/', redirect);
@@ -64,14 +64,14 @@ export async function authorize(home) {
       res.writeHead(200, {'content-type':'text/html; charset=utf-8'}).end('<h2>Strava connected. You can close this tab.</h2>');
       done();
     } catch(err) {
-      res.writeHead(400, {'content-type':'text/plain; charset=utf-8'}).end(`Authorization failed: ${err.message}`);
-      fail(err);
+      res.writeHead(400, {'content-type':'text/plain; charset=utf-8'}).end(`Authorization failed: ${err instanceof Error ? err.message : String(err)}`);
+      fail(err instanceof Error ? err : new Error(String(err)));
     }
   });
   try {
-    await new Promise((resolve,reject) => {
+    await new Promise<void>((resolve,reject) => {
       server.once('error', reject);
-      server.listen(PORT, 'localhost', resolve);
+      server.listen(PORT, 'localhost', () => resolve());
     });
     console.log('\nOpen this link to connect Strava:\n' + url.toString() + '\n');
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
@@ -86,7 +86,12 @@ export async function authorize(home) {
   }
 }
 
+interface StravaToken { access_token: string; refresh_token: string; expires_at: number; }
 export class StravaClient {
+  readonly home: string;
+  private readonly fetchFn: typeof fetch;
+  private token: StravaToken | null;
+  private readonly budgets: { general: RateBudget | null; read: RateBudget | null };
   constructor(home, fetchFn = fetch) {
     this.home = home;
     this.fetchFn = fetchFn;
@@ -94,7 +99,7 @@ export class StravaClient {
     this.budgets = { general: null, read: null } as { general: RateBudget | null; read: RateBudget | null };
   }
 
-  async accessToken() {
+  async accessToken(): Promise<string> {
     if (!this.token) throw new Error('Not connected to Strava. Run: node src/cli.mjs auth');
     if (this.token.expires_at > Math.floor(Date.now()/1000)+120) return this.token.access_token;
     const { id, secret } = readCredentials();
@@ -103,7 +108,7 @@ export class StravaClient {
     return this.token.access_token;
   }
 
-  enforceBudget(isRead) {
+  enforceBudget(isRead: boolean) {
     const now = new Date();
     for (const budget of [this.budgets.general, isRead ? this.budgets.read : null]) {
       if (!budget) continue;
@@ -121,8 +126,8 @@ export class StravaClient {
     }
   }
 
-  readBudgets(headers) {
-    for (const [key, kind] of [['X-RateLimit-', 'general'],['X-ReadRateLimit-', 'read']]) {
+  readBudgets(headers: Headers) {
+    for (const [key, kind] of [['X-RateLimit-', 'general'],['X-ReadRateLimit-', 'read']] as const) {
       const limits = headers.get(`${key}Limit`)?.split(',').map(Number);
       const usages = headers.get(`${key}Usage`)?.split(',').map(Number);
       if (limits?.length === 2 && usages?.length === 2 && limits.every(Number.isFinite) && usages.every(Number.isFinite)) {
@@ -131,7 +136,7 @@ export class StravaClient {
     }
   }
 
-  async request(method, path, body, { upload = false } = {}) {
+  async request(method: 'GET' | 'POST', path: string, body: BodyInit | undefined = undefined, { upload = false }: {upload?:boolean} = {}): Promise<any> {
     const isRead = method !== 'POST' || !path.startsWith('/uploads');
     this.enforceBudget(isRead);
     const access = await this.accessToken();
@@ -142,7 +147,7 @@ export class StravaClient {
       });
     } catch (err) {
       // A POST may have succeeded server-side; don't automatically submit twice.
-      if (upload) throw new Error(`Upload outcome unknown (network failure): ${err.message}`);
+      if (upload) throw new Error(`Upload outcome unknown (network failure): ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     }
     this.readBudgets(response.headers);
@@ -152,8 +157,7 @@ export class StravaClient {
     try { json = text ? JSON.parse(text) : {}; } catch { json = { message: text.slice(0,500) }; }
     if (!response.ok) {
       const desc = json.message || json.error || JSON.stringify(json).slice(0,500);
-      const err = new Error(`Strava API ${response.status}: ${desc}`);
-      err.status = response.status;
+      const err = Object.assign(new Error(`Strava API ${response.status}: ${desc}`), { status: response.status });
       throw err;
     }
     return json;

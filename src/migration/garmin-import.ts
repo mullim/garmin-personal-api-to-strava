@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { GarminActivity } from '../domain/types.js';
 import { zipEntries, extractEntry } from '../formats/zip.js';
 import { inspectFit, inspectXml } from '../formats/fit.js';
 import { duplicateFor, reconcile, migrate } from './migrate.js';
@@ -47,9 +48,10 @@ export async function cacheGarminDownload(id, zippedBytes, store) {
     // representations; NEVER enqueue all representations of the same activity.
     for (const extension of ['.fit','.tcx','.gpx']) {
       const candidates = entries.filter(name => name.toLowerCase().endsWith(extension));
-      const valid = [];
+      const valid: Array<{entry:string;bytes:Buffer;metadata:{isActivity:boolean;startUtc:number|null;durationSeconds:number|null;distanceM:number|null;sport:string|null};extension:string}> = [];
       for (const entry of candidates) {
         const bytes = await extractEntry(archive, entry, null, MAX_FILE);
+        if (!bytes) throw new Error('Empty Garmin ZIP entry');
         const metadata = extension === '.fit' ? inspectFit(bytes) : inspectXml(bytes, extension.slice(1));
         if (metadata?.isActivity) valid.push({ entry, bytes, metadata, extension });
       }
@@ -72,7 +74,7 @@ export async function cacheGarminDownload(id, zippedBytes, store) {
 
 export function garminPlan(store) {
   const counts = { missing:0, alreadyOnStrava:0, uploaded:0, staged:0, blocked:0 };
-  const sample = [];
+  const sample: Array<{id:string;start_utc:number|null;name:string|null;sport:string|null}> = [];
   for (const row of store.garminRows()) {
     if (row.file_status === 'uploaded' || row.state === 'uploaded') counts.uploaded++;
     else if (['uncertain','failed','processing'].includes(row.file_status) || row.state === 'failed') counts.blocked++;
@@ -126,10 +128,10 @@ export async function stageGarmin(store, client, { max = 10, log = console.log }
       await cacheGarminDownload(row.id, archive, store);
       staged++;
     } catch (err) {
-      if (err.name === 'GarminPause') throw err;
+      if (err instanceof Error && err.name === 'GarminPause') throw err;
       failed++;
-      store.garminState(row.id,'failed',{error:err.message});
-      log(`  Failed Garmin #${row.id}: ${err.message}`);
+      store.garminState(row.id,'failed',{error:err instanceof Error ? err.message : String(err)});
+      log(`  Failed Garmin #${row.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   reconcile(store,log);

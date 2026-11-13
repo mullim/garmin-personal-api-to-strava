@@ -11,7 +11,7 @@ const MAX_DOWNLOAD = 64 * 1024 * 1024;
 
 export class GarminPause extends Error {
   readonly retryAt: number | null;
-  constructor(message, retryAt = null) {
+  constructor(message: string, retryAt: number | null = null) {
     super(message);
     this.name = 'GarminPause';
     this.retryAt = retryAt;
@@ -23,7 +23,7 @@ export class GarminPause extends Error {
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 
-export function retryAfterMs(header, now = Date.now()) {
+export function retryAfterMs(header: string | null, now: number = Date.now()): number | null {
   if (!header) return null;
   const raw = header.trim();
   if (/^\d+$/.test(raw)) return Math.max(0, Number(raw) * 1000);
@@ -54,7 +54,7 @@ export function normalizeGarminActivity(raw: Record<string, any>): GarminActivit
   const id = String(raw?.activityId ?? raw?.id ?? '');
   if (!/^\d+$/.test(id) || Number(id) <= 0) throw new Error('Garmin returned an activity without a valid positive numeric activityId');
   const date = raw.startTimeGMT ?? raw.startTimeUTC ?? raw.startTimeUtc ?? null;
-  let startUtc = null;
+  let startUtc: number | null = null;
   if (typeof date === 'number') startUtc = Math.floor(date > 1e12 ? date / 1000 : date);
   else if (typeof date === 'string') {
     const iso = date.trim().replace(' ', 'T');
@@ -73,6 +73,13 @@ export function normalizeGarminActivity(raw: Record<string, any>): GarminActivit
 }
 
 export class GarminClient {
+  readonly home: string;
+  private readonly fetchFn: typeof fetch;
+  private readonly base: string;
+  private readonly minIntervalMs: number;
+  private nextRequest: number;
+  private readonly tokenPath: string;
+  private readonly cooldownPath: string;
   constructor(home, fetchFn = fetch, { baseUrl = process.env.GARMIN_PERSONAL_API_BASE_URL || DEFAULT_BASE, minIntervalMs = Number(process.env.GARMIN_MIN_INTERVAL_MS ?? 2000) } = {}) {
     this.home = home;
     this.fetchFn = fetchFn;

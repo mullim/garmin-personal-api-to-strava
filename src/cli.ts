@@ -50,7 +50,7 @@ Privacy: Strava uses your account's default visibility for uploads. Set it to
 
 function parseFlags(args) {
   const flags = new Set();
-  const values = {};
+  const values: {max?: number;maxDetails?: number;minConfidence?: 'high'|'medium'|'review';out?:string} = {};
   for (let i=0; i<args.length; i++) {
     if (args[i] === '--max') {
       values.max = Number(args[++i]);
@@ -66,7 +66,7 @@ function parseFlags(args) {
           throw new Error('--max-details must be between 0 and 500');
       } else if (flag === '--min-confidence') {
         if (!['high','medium','review'].includes(value)) throw new Error('--min-confidence must be high, medium or review');
-        values.minConfidence=value;
+        values.minConfidence=value as 'high'|'medium'|'review';
       } else values.out=value;
     } else if (['--yes','--deep','--sensitive','--refresh-garmin','--refresh-strava','--retry-failed','--retry-uncertain'].includes(args[i])) {
       flags.add(args[i]);
