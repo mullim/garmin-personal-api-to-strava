@@ -1,0 +1,11 @@
+.env
+*.zip
+*.fit
+*.tcx
+*.gpx
+node_modules/
+.DS_Store
+.g2s/
+*.sqlite
+*.sqlite-*
+token.json
