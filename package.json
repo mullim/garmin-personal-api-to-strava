@@ -16,12 +16,17 @@
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "test": "npm run build && node --test test/*.test.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@types/yauzl": "^2.10.3"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "yauzl": "^2.10.0"
+  }
 }

@@ -37,9 +37,33 @@ The audit uses **only your Strava OAuth connection**: no Garmin API request or G
 
 ## Requirements
 
-- macOS (or Linux) with Node.js 22.13+ (Node 24 recommended) and `unzip` installed. No `npm install` needed.
+- macOS, Linux, or Windows with Node.js 22.13+ (Node 24 recommended). Install npm dependencies and build the TypeScript source before running the CLI.
 - Your **Garmin Connect Personal API key**, generated in Garmin Connect web.
 - A Strava API application and Client ID / Client Secret. Strava currently requires a subscription to create an API app.
+
+## Installation and TypeScript development
+
+```bash
+npm install            # installs yauzl and TypeScript tooling; builds via prepare
+npm run typecheck      # strict TypeScript checks
+npm test               # compiles and runs the regression suite
+npm run dev -- help    # executes TypeScript directly while developing
+```
+
+The implementation lives in `src/**/*.ts`. The legacy `node src/cli.mjs` entrypoint is a small compatibility shim which launches the compiled `dist/cli.js`. **After pulling updates**, run `npm install` and `npm run build` before using that shim.
+
+The existing SQLite state under `~/.garmin-api-to-strava` is retained; no reset or re-authorization is required. You should still back up `migration.sqlite` before updating a long-running migration.
+
+### Source layout
+
+- `src/integrations/` — Garmin and Strava clients, authentication and rate-limit handling
+- `src/persistence/` — SQLite schema and migration queue
+- `src/migration/` — discovery, reconciliation and resumable uploads
+- `src/audit/` — strict and sensitive duplicate detection and CSV/JSON reporting
+- `src/formats/` — original activity FIT/TCX/GPX inspection and bounded ZIP extraction
+- `src/domain/` — shared interfaces for external API responses and local persistence
+
+The source is strict-checked TypeScript, targeting modern Node.js ESM. No web backend is required.
 
 ## 1. Get your Garmin Personal API key
 

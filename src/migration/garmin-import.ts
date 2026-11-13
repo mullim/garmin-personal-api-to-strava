@@ -47,7 +47,7 @@ export async function cacheGarminDownload(id: string, zippedBytes: Buffer, store
   const archive = join(tmp, 'activity.zip');
   try {
     writeFileSync(archive, zippedBytes, {mode:0o600});
-    const entries = zipEntries(archive).filter(name => /\.(fit|tcx|gpx)$/i.test(name));
+    const entries = (await zipEntries(archive)).filter(name => /\.(fit|tcx|gpx)$/i.test(name));
     // The endpoint is a per-activity ZIP. Prefer the native FIT over alternate
     // representations; NEVER enqueue all representations of the same activity.
     for (const extension of ['.fit','.tcx','.gpx']) {
