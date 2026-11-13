@@ -1,11 +1,15 @@
 {
   "name": "garmin-personal-api-to-strava",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Local-first, resumable Garmin Connect Personal API to Strava migration CLI",
-  "bin": { "g2s": "./src/cli.mjs" },
-  "engines": { "node": ">=22.13.0" },
+  "bin": {
+    "g2s": "./src/cli.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node src/cli.mjs",
     "test": "node --test test/*.test.mjs"
