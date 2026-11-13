@@ -36,12 +36,11 @@ function safeEntry(name: string): boolean {
 /** Return all safe, non-directory entry names, without extracting files. */
 export async function zipEntries(file: string): Promise<string[]> {
   const archive = await openArchive(file);
-  console.log('[DEBUGZIP] index opened', archive.entryCount);
   return new Promise((resolve, reject) => {
     const names: string[] = [];
     let seen = 0;
     let complete = false;
-    const finish = (error?: Error) => { console.log('[DEBUGZIP] index finish',error?.message);
+    const finish = (error?: Error) => {
       if (complete) return;
       complete = true;
       archive.close();
@@ -77,11 +76,10 @@ export async function extractEntry(
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('Invalid ZIP extraction size limit.');
   if (!safeEntry(entryName)) throw new Error('Unsafe ZIP entry path.');
   const archive = await openArchive(file);
-  console.log('[DEBUGZIP] extract opened', archive.entryCount, entryName);
   return new Promise((resolve, reject) => {
     let complete = false;
     let visited = 0;
-    const finish = (error?: Error, bytes?: Buffer | null) => { console.log('[DEBUGZIP] extract finish',error?.message,bytes?.length);
+    const finish = (error?: Error, bytes?: Buffer | null) => {
       if (complete) return;
       complete = true;
       archive.close();
@@ -91,7 +89,6 @@ export async function extractEntry(
     archive.on('error', finish);
     archive.on('end', () => finish(new Error(`Missing Garmin ZIP entry: ${entryName}`)));
     archive.on('entry', (entry: Entry) => {
-      console.log('[DEBUGZIP] extracting entry event',entry.fileName,entry.uncompressedSize);
       if (++visited > MAX_ENTRIES) return finish(new Error('Garmin ZIP has too many entries.'));
       if (entry.fileName !== entryName) {
         archive.readEntry();
@@ -101,31 +98,38 @@ export async function extractEntry(
         finish(new Error(`Oversized Garmin ZIP entry: ${entryName}`));
         return;
       }
-      archive.openReadStream(entry, async (error, stream) => {
-        console.log('[DEBUGZIP] stream callback',error,Boolean(stream));
+      archive.openReadStream(entry, (error, stream) => {
         if (error || !stream) {
           finish(error ?? new Error(`Cannot open Garmin ZIP entry: ${entryName}`));
           return;
         }
         const chunks: Buffer[] = [];
         let length = 0;
-        try {
-          for await (const chunk of stream) {
-            console.log('[DEBUGZIP] stream chunk',chunk.length);
-            const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            length += bytes.length;
-            if (length > maxBytes) {
-              stream.destroy();
-              throw new Error(`Oversized Garmin ZIP entry: ${entryName}`);
-            }
-            chunks.push(bytes);
+        stream.on('data', (chunk: Buffer) => {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          length += bytes.length;
+          if (length > maxBytes) {
+            finish(new Error(`Oversized Garmin ZIP entry: ${entryName}`));
+            stream.destroy();
+            return;
           }
-          const bytes = Buffer.concat(chunks, length);
-          if (destination) writeFileSync(destination, bytes, { mode: 0o600 });
-          finish(undefined, destination ? null : bytes);
-        } catch (cause) {
-          finish(cause instanceof Error ? cause : new Error(String(cause)));
-        }
+          chunks.push(bytes);
+        });
+        stream.once('error', (cause: Error) => finish(cause));
+        stream.once('end', () => {
+          if (complete) return;
+          try {
+            const bytes = Buffer.concat(chunks, length);
+            if (destination) writeFileSync(destination, bytes, { mode: 0o600 });
+            finish(undefined, destination ? null : bytes);
+          } catch (cause) {
+            finish(cause instanceof Error ? cause : new Error(String(cause)));
+          }
+        });
+        stream.once('close', () => {
+          if (!complete) finish(new Error(`ZIP stream closed before end: ${entryName}`));
+        });
+        stream.resume();
       });
     });
     archive.readEntry();
