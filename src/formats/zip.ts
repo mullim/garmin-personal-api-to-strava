@@ -49,7 +49,7 @@ export async function zipEntries(file: string): Promise<string[]> {
     };
     archive.on('error', finish);
     archive.on('end', () => finish());
-    archive.on('entry', (entry: Entry) => { console.log('[DEBUGZIP] got entry',entry.fileName);
+    archive.on('entry', (entry: Entry) => {
       if (++seen > MAX_ENTRIES) {
         finish(new Error('Garmin activity ZIP has too many entries.'));
         return;
