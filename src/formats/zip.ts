@@ -91,6 +91,7 @@ export async function extractEntry(
     archive.on('error', finish);
     archive.on('end', () => finish(new Error(`Missing Garmin ZIP entry: ${entryName}`)));
     archive.on('entry', (entry: Entry) => {
+      console.log('[DEBUGZIP] extracting entry event',entry.fileName,entry.uncompressedSize);
       if (++visited > MAX_ENTRIES) return finish(new Error('Garmin ZIP has too many entries.'));
       if (entry.fileName !== entryName) {
         archive.readEntry();
@@ -101,6 +102,7 @@ export async function extractEntry(
         return;
       }
       archive.openReadStream(entry, async (error, stream) => {
+        console.log('[DEBUGZIP] stream callback',error,Boolean(stream));
         if (error || !stream) {
           finish(error ?? new Error(`Cannot open Garmin ZIP entry: ${entryName}`));
           return;
@@ -109,6 +111,7 @@ export async function extractEntry(
         let length = 0;
         try {
           for await (const chunk of stream) {
+            console.log('[DEBUGZIP] stream chunk',chunk.length);
             const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
             length += bytes.length;
             if (length > maxBytes) {
