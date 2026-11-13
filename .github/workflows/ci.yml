@@ -18,6 +18,8 @@ jobs:
           node-version: '22'
       - name: Install development dependencies
         run: npm install --no-audit --no-fund
+      - name: Temporary dependency lockfile export
+        run: node -e "console.log('LOCKFILE_JSON=' + JSON.stringify(require('node:fs').readFileSync('package-lock.json', 'utf8')))"
       - name: Static type checking
         run: npm run typecheck
       - name: Build and run tests
