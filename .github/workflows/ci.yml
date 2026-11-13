@@ -1,0 +1,30 @@
+name: TypeScript CI
+
+on:
+  push:
+    branches: [main, refactor/typed-core]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Static type checking
+        run: npm run typecheck
+      - name: Build and run tests
+        run: npm test
+      - name: Smoke-test CLI help
+        run: node src/cli.mjs --help

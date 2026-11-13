@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findSensitivePairs } from '../src/duplicates-sensitive.mjs';
-import { findDuplicatePairs } from '../src/duplicates.mjs';
+import { findSensitivePairs } from '../dist/audit/duplicates-sensitive.js';
+import { findDuplicatePairs } from '../dist/audit/duplicates.js';
 const at=(h,m)=>Date.parse(`2026-11-12T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00Z`)/1000;
 const a=(id,start,min,sport='Run')=>({id:String(id),start_utc:start,duration_seconds:min*60,sport,distance_m:5000,name:`Activity ${id}`});
 test('keeps strict high confidence matches',()=>{

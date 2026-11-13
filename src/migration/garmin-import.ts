@@ -2,16 +2,21 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { zipEntries, extractEntry } from './zip.mjs';
-import { inspectFit, inspectXml } from './fit.mjs';
-import { duplicateFor, reconcile, migrate } from './migrate.mjs';
+import type { Logger, FitMetadata, GarminRow } from '../domain/types.js';
+import type { Store } from '../persistence/store.js';
+import type { GarminClient } from '../integrations/garmin.js';
+import type { StravaClient } from '../integrations/strava.js';
+import type { GarminActivity } from '../domain/types.js';
+import { zipEntries, extractEntry } from '../formats/zip.js';
+import { inspectFit, inspectXml } from '../formats/fit.js';
+import { duplicateFor, reconcile, migrate } from './migrate.js';
 
 const MAX_FILE = 64 * 1024 * 1024;
 const PAGE_SIZE = 20;
 
 // Don't re-enumerate all historical workouts unless explicitly requested;
 // any interrupted enumeration is continued from the last completed page.
-export async function discoverGarmin(store, client, log = console.log, force = false) {
+export async function discoverGarmin(store: Store, client: Pick<GarminClient,'activities'>, log: Logger = console.log, force = false): Promise<void> {
   if (!force && store.getMeta('garmin_discovered_at')) {
     log(`Using Garmin index: ${store.countGarmin()} activities. Use --refresh-garmin to rescan Garmin.`);
     return;
@@ -37,19 +42,20 @@ export async function discoverGarmin(store, client, log = console.log, force = f
   throw new Error('Reached Garmin discovery safety limit (100,000 offsets).');
 }
 
-export async function cacheGarminDownload(id, zippedBytes, store) {
+export async function cacheGarminDownload(id: string, zippedBytes: Buffer, store: Store): Promise<string> {
   const tmp = mkdtempSync(join(tmpdir(), 'g2s-garmin-'));
   const archive = join(tmp, 'activity.zip');
   try {
     writeFileSync(archive, zippedBytes, {mode:0o600});
-    const entries = zipEntries(archive).filter(name => /\.(fit|tcx|gpx)$/i.test(name));
+    const entries = (await zipEntries(archive)).filter(name => /\.(fit|tcx|gpx)$/i.test(name));
     // The endpoint is a per-activity ZIP. Prefer the native FIT over alternate
     // representations; NEVER enqueue all representations of the same activity.
     for (const extension of ['.fit','.tcx','.gpx']) {
       const candidates = entries.filter(name => name.toLowerCase().endsWith(extension));
-      const valid = [];
+      const valid: Array<{entry:string;bytes:Buffer;metadata:{isActivity:boolean;startUtc:number|null;durationSeconds:number|null;distanceM:number|null;sport:string|null};extension:string}> = [];
       for (const entry of candidates) {
         const bytes = await extractEntry(archive, entry, null, MAX_FILE);
+        if (!bytes) throw new Error('Empty Garmin ZIP entry');
         const metadata = extension === '.fit' ? inspectFit(bytes) : inspectXml(bytes, extension.slice(1));
         if (metadata?.isActivity) valid.push({ entry, bytes, metadata, extension });
       }
@@ -70,12 +76,12 @@ export async function cacheGarminDownload(id, zippedBytes, store) {
   } finally { rmSync(tmp, {recursive:true,force:true}); }
 }
 
-export function garminPlan(store) {
+export function garminPlan(store: Store) {
   const counts = { missing:0, alreadyOnStrava:0, uploaded:0, staged:0, blocked:0 };
-  const sample = [];
+  const sample: Array<{id:string;start_utc:number|null;name:string|null;sport:string|null}> = [];
   for (const row of store.garminRows()) {
     if (row.file_status === 'uploaded' || row.state === 'uploaded') counts.uploaded++;
-    else if (['uncertain','failed','processing'].includes(row.file_status) || row.state === 'failed') counts.blocked++;
+    else if (['uncertain','failed','processing'].includes(row.file_status ?? '') || row.state === 'failed') counts.blocked++;
     else if (row.state === 'skipped' || row.file_status === 'skipped' || duplicateFor(row,store)) counts.alreadyOnStrava++;
     else if (row.file_status === 'pending' || row.state === 'staged') counts.staged++;
     else {
@@ -86,7 +92,7 @@ export function garminPlan(store) {
   return {counts, sample};
 }
 
-export function printGarminPlan(store) {
+export function printGarminPlan(store: Store) {
   const {counts,sample} = garminPlan(store);
   console.log('\nGarmin → Strava migration preview:');
   console.log(`  Garmin activities indexed: ${store.countGarmin()}`);
@@ -103,13 +109,13 @@ export function printGarminPlan(store) {
   else console.log('  WARNING: no complete Strava inventory yet. Missing counts may include existing activities.');
 }
 
-export async function stageGarmin(store, client, { max = 10, log = console.log } = {}) {
+export async function stageGarmin(store: Store, client: Pick<GarminClient,'downloadActivity'>, { max = 10, log = console.log }: {max?:number;log?:Logger} = {}) {
   if (!store.getMeta('remote_synced_at')) throw new Error('Complete a Strava activity inventory before downloading/uploading workouts.');
   let staged = 0, skipped = 0, failed = 0;
   for (const row of store.garminRows()) {
     if (staged >= max) break;
     if (['skipped','uploaded'].includes(row.state) || row.file_status === 'uploaded') continue;
-    if (row.state === 'failed' || ['failed','uncertain','processing','skipped'].includes(row.file_status)) continue;
+    if (row.state === 'failed' || ['failed','uncertain','processing','skipped'].includes(row.file_status ?? '')) continue;
     if (row.file_digest && row.file_status === 'pending') {
       const stored = store.fileByDigest(row.file_digest);
       if (stored && existsSync(stored.path)) continue;
@@ -126,10 +132,10 @@ export async function stageGarmin(store, client, { max = 10, log = console.log }
       await cacheGarminDownload(row.id, archive, store);
       staged++;
     } catch (err) {
-      if (err.name === 'GarminPause') throw err;
+      if (err instanceof Error && err.name === 'GarminPause') throw err;
       failed++;
-      store.garminState(row.id,'failed',{error:err.message});
-      log(`  Failed Garmin #${row.id}: ${err.message}`);
+      store.garminState(row.id,'failed',{error:err instanceof Error ? err.message : String(err)});
+      log(`  Failed Garmin #${row.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   reconcile(store,log);
@@ -137,7 +143,7 @@ export async function stageGarmin(store, client, { max = 10, log = console.log }
   return {staged,skipped,failed};
 }
 
-export async function runGarminMigration(store, garminClient, stravaClient, {max=10,log=console.log}={}) {
+export async function runGarminMigration(store: Store, garminClient: Pick<GarminClient,'downloadActivity'>, stravaClient: Pick<StravaClient,'upload'|'uploadStatus'>, {max=10,log=console.log}:{max?:number;log?:Logger}={}) {
   // Upload each staged workout before downloading the next one. This checkpoints
   // actual Strava progress instead of collecting 1000 Garmin downloads first.
   let attemptedTotal = 0;

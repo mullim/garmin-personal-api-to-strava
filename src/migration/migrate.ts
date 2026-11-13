@@ -1,8 +1,11 @@
-import { RateLimitPause } from './strava.mjs';
+import type { RemoteActivity, FileRow, ComparableActivity, Logger, StravaUploadResponse } from '../domain/types.js';
+import type { Store } from '../persistence/store.js';
+import type { StravaClient } from '../integrations/strava.js';
+import { RateLimitPause } from '../integrations/strava.js';
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export function isLikelyDuplicate(local, remote) {
+export function isLikelyDuplicate(local: {start_utc: number|null; distance_m: number|null; duration_seconds: number|null}, remote: Pick<RemoteActivity,'start_utc'|'distance_m'|'duration_seconds'>): boolean {
   if (local.start_utc == null || remote.start_utc == null) return false;
   if (Math.abs(local.start_utc - remote.start_utc) > 3) return false;
   if (local.distance_m != null && remote.distance_m != null && local.distance_m > 0 && remote.distance_m > 0) {
@@ -14,11 +17,11 @@ export function isLikelyDuplicate(local, remote) {
   return true;
 }
 
-export function duplicateFor(file, store) {
+export function duplicateFor(file: ComparableActivity, store: Pick<Store,'remoteNear'>): RemoteActivity | undefined {
   return store.remoteNear(file.start_utc).find(a => isLikelyDuplicate(file, a));
 }
 
-export async function syncRemote(store, client, log = console.log, force = false) {
+export async function syncRemote(store: Store, client: Pick<StravaClient,'activities'>, log: Logger = console.log, force = false): Promise<void> {
   const completed = store.getMeta('remote_synced_at');
   if (!force && completed && Date.now() - Date.parse(completed) < 10 * 60 * 1000) {
     log(`Using recent Strava inventory (${store.countRemote()} activities, ${completed}).`);
@@ -48,7 +51,7 @@ export async function syncRemote(store, client, log = console.log, force = false
   throw new Error('Reached a safety limit of 1,000,000 Strava activities.');
 }
 
-export function reconcile(store, log = console.log) {
+export function reconcile(store: Store, log: Logger = console.log): number {
   let skipped = 0;
   for (const file of store.files(['pending','failed','uncertain'])) {
     const match = duplicateFor(file, store);
@@ -61,14 +64,14 @@ export function reconcile(store, log = console.log) {
   return skipped;
 }
 
-function stravaId(upload) {
+function stravaId(upload: StravaUploadResponse): string | null {
   return upload.id_str ?? (upload.id == null ? null : String(upload.id));
 }
-function createdActivityId(upload) {
+function createdActivityId(upload: StravaUploadResponse): string | null {
   return upload.activity_id_str ?? (upload.activity_id == null ? null : String(upload.activity_id));
 }
 
-export async function pollUpload(file, store, client, log = console.log) {
+export async function pollUpload(file: FileRow, store: Store, client: Pick<StravaClient,'uploadStatus'>, log: Logger = console.log): Promise<boolean> {
   if (!file.upload_id) {
     store.updateFile(file.digest, 'uncertain', { error:'Missing upload ID; confirm on Strava before retrying.' });
     return false;
@@ -96,7 +99,7 @@ export async function pollUpload(file, store, client, log = console.log) {
   return false;
 }
 
-export async function migrate(store, client, { max = 25, log = console.log } = {}) {
+export async function migrate(store: Store, client: Pick<StravaClient,'upload'|'uploadStatus'>, { max = 25, log = console.log }: {max?:number;log?:Logger} = {}) {
   if (!store.getMeta('remote_synced_at')) throw new Error('Strava inventory has not finished syncing; do not upload until sync completes.');
   // Always resolve submitted uploads before submitting new ones.
   for (const processing of store.files(['processing'])) {
@@ -119,9 +122,10 @@ export async function migrate(store, client, { max = 25, log = console.log } = {
       if (err instanceof RateLimitPause) throw err;
       // Request may have reached Strava despite 5xx/network failure. Mark it
       // uncertain, and never automatically retry it.
-      const uncertain = !err.status || err.status >= 500;
-      store.updateFile(file.digest, uncertain ? 'uncertain' : 'failed', { error:err.message });
-      log(`  ${uncertain ? 'Uncertain outcome' : 'Rejected'}: ${err.message}`);
+      const status = err && typeof err === 'object' && 'status' in err && typeof err.status === 'number' ? err.status : undefined;
+      const uncertain = !status || status >= 500;
+      store.updateFile(file.digest, uncertain ? 'uncertain' : 'failed', { error:err instanceof Error ? err.message : String(err) });
+      log(`  ${uncertain ? 'Uncertain outcome' : 'Rejected'}: ${err instanceof Error ? err.message : String(err)}`);
       if (uncertain) throw new Error('Upload outcome uncertain. Run sync, inspect Strava, then use --retry-uncertain only after confirming it is missing.');
       continue;
     }

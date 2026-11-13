@@ -1,9 +1,11 @@
 // Minimal read-only FIT inspector. We leave the original binary untouched for Strava.
 // It looks at the FIT file_id and session messages so daily wellness files stay out.
-const FIT_EPOCH = 631065600; // 1989-12-31T00:00:00Z
-const SPORT = new Map([[1,'Run'],[2,'Ride'],[5,'Swim'],[10,'Workout'],[11,'Walk'],[13,'AlpineSki'],[14,'Snowboard'],[15,'Rowing'],[17,'Hike'],[19,'Paddling'],[21,'Sail'],[254,'Workout']]);
+import type { FitMetadata } from '../domain/types.js';
 
-export function inspectFit(buffer) {
+const FIT_EPOCH = 631065600; // 1989-12-31T00:00:00Z
+const SPORT = new Map<number,string>([[1,'Run'],[2,'Ride'],[5,'Swim'],[10,'Workout'],[11,'Walk'],[13,'AlpineSki'],[14,'Snowboard'],[15,'Rowing'],[17,'Hike'],[19,'Paddling'],[21,'Sail'],[254,'Workout']]);
+
+export function inspectFit(buffer: Buffer): (FitMetadata & {fileType:number|null;sawSession:boolean}) | null {
   if (buffer.length < 14 || buffer.toString('ascii', 8, 12) !== '.FIT') return null;
   const headerSize = buffer[0];
   if (headerSize < 12 || headerSize > buffer.length) return null;
@@ -11,28 +13,28 @@ export function inspectFit(buffer) {
   if (headerSize + dataSize > buffer.length) return null;
   const end = headerSize + dataSize;
   let pos = headerSize;
-  const defs = new Map();
+  const defs = new Map<number,{ big:boolean; global:number; fields:Array<{num:number;size:number}>; size:number }>();
   let fileType = null;
   let sawSession = false;
-  let startUtc = null;
-  let durationSeconds = null;
-  let distanceM = null;
-  let sport = null;
-  function readField(bytes, def, num) {
+  let startUtc: number | null = null;
+  let durationSeconds: number | null = null;
+  let distanceM: number | null = null;
+  let sport: string | null = null;
+  function readField(bytes: Buffer, def: { big:boolean; global:number; fields:Array<{num:number;size:number}>; size:number }, num: number): number | null {
     const field = def.fields.find(f => f.num === num);
     if (!field || field.size < bytesFor(def, field)) return null;
     const start = def.fields.slice(0, def.fields.indexOf(field)).reduce((s, f) => s + f.size, 0);
     if (start + field.size > bytes.length) return null;
     const b = bytes.subarray(start, start + field.size);
     const size = field.size;
-    const unsigned = def.big ? (n) => b.readUIntBE(0, n) : (n) => b.readUIntLE(0, n);
+    const unsigned = def.big ? (n: number) => b.readUIntBE(0, n) : (n: number) => b.readUIntLE(0, n);
     if (size === 1) return b[0] === 0xff ? null : b[0];
     if (size === 2) { const v = unsigned(2); return v === 0xffff ? null : v; }
     if (size === 4) { const v = unsigned(4); return v === 0xffffffff ? null : v; }
     return null;
   }
   // Field-specific interpretation only depends on width, not generic FIT scale profile.
-  function bytesFor(_def, field) { return field.size; }
+  function bytesFor(_def: unknown, field: {size:number}) { return field.size; }
   try {
     while (pos < end) {
       const hdr = buffer[pos++];
@@ -43,7 +45,7 @@ export function inspectFit(buffer) {
         const global = big ? buffer.readUInt16BE(pos + 2) : buffer.readUInt16LE(pos + 2);
         const count = buffer[pos + 4];
         pos += 5;
-        const fields = [];
+        const fields: Array<{num:number;size:number}> = [];
         for (let i = 0; i < count; i++) {
           if (pos + 3 > end) return null;
           fields.push({ num: buffer[pos], size: buffer[pos + 1] });
@@ -84,7 +86,7 @@ export function inspectFit(buffer) {
   return { isActivity: fileType === 4 || sawSession, fileType, sawSession, startUtc, durationSeconds, distanceM, sport };
 }
 
-export function inspectXml(buffer, extension) {
+export function inspectXml(buffer: Buffer, extension: string): FitMetadata | null {
   const xml = buffer.toString('utf8');
   if (extension === 'gpx' && !/<(?:\w+:)?gpx[\s>]/i.test(xml)) return null;
   if (extension === 'tcx' && !/<(?:\w+:)?TrainingCenterDatabase[\s>]/i.test(xml)) return null;

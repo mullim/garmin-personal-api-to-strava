@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import type { GarminActivity, RemoteActivity, StravaActivityDetail, StravaActivitySummary, ActivityFileInput, FileRow, GarminRow } from '../domain/types.js';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -8,6 +9,8 @@ export function getHome() {
 }
 
 export class Store {
+  readonly home: string;
+  private readonly db: DatabaseSync;
   constructor(home = getHome()) {
     this.home = home;
     mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -73,7 +76,7 @@ export class Store {
 
   close() { this.db.close(); }
 
-  addGarmin(a) {
+  addGarmin(a: GarminActivity) {
     this.db.prepare(`INSERT INTO garmin_activities (id,name,start_utc,duration_seconds,distance_m,sport)
       VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, start_utc=excluded.start_utc,
@@ -83,24 +86,24 @@ export class Store {
       typeof a.sport === 'string' ? a.sport : null
     );
   }
-  garminRows() {
+  garminRows(): GarminRow[] {
     return this.db.prepare(`SELECT g.*, f.status AS file_status, f.remote_activity_id AS file_remote_id
       FROM garmin_activities g LEFT JOIN files f ON f.digest=g.file_digest
-      ORDER BY g.start_utc ASC, g.id ASC`).all();
+      ORDER BY g.start_utc ASC, g.id ASC`).all() as unknown as GarminRow[];
   }
-  countGarmin() { return this.db.prepare('SELECT COUNT(*) AS n FROM garmin_activities').get().n; }
-  garminFile(id, digest) {
+  countGarmin(): number { return Number((this.db.prepare('SELECT COUNT(*) AS n FROM garmin_activities').get() as {n:number}|undefined)?.n ?? 0); }
+  garminFile(id: string, digest: string) {
     this.db.prepare(`UPDATE garmin_activities SET file_digest=?,state='staged',error=NULL,updated_at=datetime('now') WHERE id=?`).run(digest, id);
   }
   resetGarminFailed() {
     this.db.exec("UPDATE garmin_activities SET state='pending',error=NULL WHERE state='failed'");
   }
-  garminState(id, state, { remoteId = null, error = null } = {}) {
+  garminState(id: string, state: string, { remoteId = null, error = null }:{remoteId?:string|null;error?:string|null} = {}) {
     this.db.prepare(`UPDATE garmin_activities SET state=?,remote_activity_id=COALESCE(?,remote_activity_id),
       error=?,updated_at=datetime('now') WHERE id=?`).run(state,remoteId,error,id);
   }
 
-  addFile(file) {
+  addFile(file: ActivityFileInput) {
     this.db.prepare(`INSERT INTO files
       (digest, path, original_path, format, start_utc, duration_seconds, distance_m, sport)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -117,15 +120,15 @@ export class Store {
     );
   }
 
-  fileByDigest(digest) { return this.db.prepare('SELECT * FROM files WHERE digest=?').get(digest); }
+  fileByDigest(digest: string): FileRow | undefined { return this.db.prepare('SELECT * FROM files WHERE digest=?').get(digest) as unknown as FileRow | undefined; }
 
-  files(statuses) {
-    if (!statuses?.length) return this.db.prepare('SELECT * FROM files ORDER BY start_utc ASC, original_path ASC').all();
+  files(statuses?: string[]): FileRow[] {
+    if (!statuses?.length) return this.db.prepare('SELECT * FROM files ORDER BY start_utc ASC, original_path ASC').all() as unknown as FileRow[];
     const placeholders = statuses.map(() => '?').join(',');
-    return this.db.prepare(`SELECT * FROM files WHERE status IN (${placeholders}) ORDER BY start_utc ASC, original_path ASC`).all(...statuses);
+    return this.db.prepare(`SELECT * FROM files WHERE status IN (${placeholders}) ORDER BY start_utc ASC, original_path ASC`).all(...statuses) as unknown as FileRow[];
   }
 
-  updateFile(digest, status, fields = {}) {
+  updateFile(digest: string, status: string, fields: {remoteActivityId?:string|null;uploadId?:string|null;error?:string|null} = {}) {
     this.db.prepare(`UPDATE files SET status=?, remote_activity_id=COALESCE(?,remote_activity_id),
       upload_id=COALESCE(?,upload_id), error=?, updated_at=datetime('now') WHERE digest=?`)
       .run(status, fields.remoteActivityId ?? null, fields.uploadId ?? null, fields.error ?? null, digest);
@@ -137,13 +140,13 @@ export class Store {
       : "UPDATE files SET status='pending', error=NULL, upload_id=NULL WHERE status='failed'");
   }
 
-  setMeta(key, value) {
+  setMeta(key: string, value: string | number) {
     this.db.prepare('INSERT INTO meta(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, String(value));
   }
-  getMeta(key) { return this.db.prepare('SELECT value FROM meta WHERE key=?').get(key)?.value; }
+  getMeta(key: string): string | undefined { const row = this.db.prepare('SELECT value FROM meta WHERE key=?').get(key) as {value: string}|undefined; return row?.value; }
 
   clearRemote() { this.db.exec('DELETE FROM remote_activities'); }
-  upsertRemote(a) {
+  upsertRemote(a: StravaActivitySummary) {
     this.db.prepare(`INSERT INTO remote_activities
       (id,start_utc,duration_seconds,distance_m,sport,name,route_polyline,manual,moving_seconds)
       VALUES (?,?,?,?,?,?,?,?,?)
@@ -157,13 +160,13 @@ export class Store {
         a.name ?? null, a.map?.summary_polyline ?? null, a.manual ? 1 : 0,
         a.moving_time ?? null);
   }
-  remoteAll() {
-    return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all();
+  remoteAll(): RemoteActivity[] {
+    return this.db.prepare('SELECT * FROM remote_activities ORDER BY start_utc ASC').all() as unknown as RemoteActivity[];
   }
-  remoteById(id) {
-    return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id));
+  remoteById(id: string): RemoteActivity | undefined {
+    return this.db.prepare('SELECT * FROM remote_activities WHERE id=?').get(String(id)) as unknown as RemoteActivity | undefined;
   }
-  updateRemoteDetail(id, detail) {
+  updateRemoteDetail(id: string, detail: StravaActivityDetail) {
     this.db.prepare(`UPDATE remote_activities
       SET device_name=?,route_polyline=COALESCE(?,route_polyline),
       detail_fetched_at=datetime('now')
@@ -173,10 +176,10 @@ export class Store {
       String(id)
     );
   }
-  remoteNear(epoch) {
+  remoteNear(epoch: number | null): RemoteActivity[] {
     if (epoch == null) return [];
-    return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3);
+    return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3) as unknown as RemoteActivity[];
   }
-  countRemote() { return this.db.prepare('SELECT COUNT(*) AS n FROM remote_activities').get().n; }
-  counts() { return this.db.prepare('SELECT status, COUNT(*) AS count FROM files GROUP BY status ORDER BY status').all(); }
+  countRemote(): number { return Number((this.db.prepare('SELECT COUNT(*) AS n FROM remote_activities').get() as {n:number}|undefined)?.n ?? 0); }
+  counts(): Array<{status:string;count:number}> { return this.db.prepare('SELECT status, COUNT(*) AS count FROM files GROUP BY status ORDER BY status').all() as Array<{status:string;count:number}>; }
 }

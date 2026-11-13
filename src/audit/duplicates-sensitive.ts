@@ -1,23 +1,24 @@
-import { findDuplicatePairs, routeAgreement } from './duplicates.mjs';
+import type { RemoteActivity, DuplicatePair } from '../domain/types.js';
+import { findDuplicatePairs, routeAgreement } from './duplicates.js';
 
 // Broad, read-only review mode. The normal duplicate detector is intentionally
 // conservative. This adds plausible overlaps that it excluded, and NEVER
 // upgrades an additional candidate above 'review'.
-const groups = new Map([
-  ...['Run','TrailRun','VirtualRun'].map(x => [x, 'running']),
-  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x => [x,'cycling']),
-  ...['Walk','Hike'].map(x => [x,'walking']),
-  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining','Elliptical'].map(x => [x,'strength']),
-  ...['Swim'].map(x => [x,'swimming']),
-  ...['Yoga','Pilates'].map(x => [x,'mindbody']),
-  ...['Rowing','VirtualRow'].map(x => [x,'rowing']),
+const groups = new Map<string,string>([
+  ...['Run','TrailRun','VirtualRun'].map(x=>[x,'running'] as [string,string]),
+  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x=>[x,'cycling'] as [string,string]),
+  ...['Walk','Hike'].map(x=>[x,'walking'] as [string,string]),
+  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining','Elliptical'].map(x=>[x,'strength'] as [string,string]),
+  ...['Swim'].map(x=>[x,'swimming'] as [string,string]),
+  ...['Yoga','Pilates'].map(x=>[x,'mindbody'] as [string,string]),
+  ...['Rowing','VirtualRow'].map(x=>[x,'rowing'] as [string,string]),
 ]);
 const generic = new Set(['Workout','HighIntensityIntervalTraining','Other']);
-const numeric = x => x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x);
-const ratio = (x,y) => Math.min(x,y)/Math.max(x,y);
-const pairKey = (a,b) => [String(a.id),String(b.id)].sort().join('|');
-function group(x) { const s=String(x?.sport ?? ''); return groups.get(s) ?? (s ? s.toLowerCase() : null); }
-function broadPair(a,b) {
+const numeric = (x: unknown): number | null => x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x);
+const ratio = (x: number,y: number) => Math.min(x,y)/Math.max(x,y);
+const pairKey = (a: RemoteActivity,b: RemoteActivity) => [String(a.id),String(b.id)].sort().join('|');
+function group(x: RemoteActivity | null | undefined): string | null { const s=String(x?.sport ?? ''); return groups.get(s) ?? (s ? s.toLowerCase() : null); }
+function broadPair(a: RemoteActivity,b: RemoteActivity): DuplicatePair | null {
   const sa=numeric(a.start_utc), sb=numeric(b.start_utc);
   const da=numeric(a.duration_seconds), db=numeric(b.duration_seconds);
   if (sa === null || sb === null || da === null || db === null || da < 60 || db < 60 || String(a.id)===String(b.id)) return null;
@@ -47,7 +48,7 @@ function broadPair(a,b) {
     return null;
   }
   const distA=numeric(a.distance_m),distB=numeric(b.distance_m);
-  const distSimilarity=distA>100 && distB>100 ? ratio(distA,distB) : null;
+  const distSimilarity=distA!==null && distB!==null && distA>100 && distB>100 ? ratio(distA,distB) : null;
   const routeSimilarity=routeAgreement(a.route_polyline,b.route_polyline);
   return {
     confidence:'review',sportGroup:same?ga:`${ga} / ${gb}`,
@@ -58,12 +59,12 @@ function broadPair(a,b) {
   };
 }
 
-export function findSensitivePairs(activities) {
+export function findSensitivePairs(activities: RemoteActivity[]): DuplicatePair[] {
   const strict=findDuplicatePairs(activities);
-  const results=new Map(strict.map(p=>[pairKey(p.a,p.b),p]));
-  const rows=activities.filter(a=>numeric(a.start_utc)!==null && numeric(a.duration_seconds)>=60 && group(a))
+  const results=new Map<string,DuplicatePair>(strict.map(p=>[pairKey(p.a,p.b),p]));
+  const rows=activities.filter(a=>numeric(a.start_utc)!==null && (numeric(a.duration_seconds) ?? 0)>=60 && group(a))
     .slice().sort((a,b)=>Number(a.start_utc)-Number(b.start_utc));
-  const active=[];
+  const active: RemoteActivity[]=[];
   for (const current of rows) {
     const start=Number(current.start_utc);
     for(let i=active.length-1;i>=0;i--) {

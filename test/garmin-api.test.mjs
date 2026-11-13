@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { GarminClient, GarminPause, retryAfterMs, normalizeGarminActivity, jwtExpiresAt } from '../src/garmin.mjs';
-import { Store } from '../src/store.mjs';
-import { discoverGarmin, cacheGarminDownload, stageGarmin, garminPlan } from '../src/garmin-import.mjs';
+import { GarminClient, GarminPause, retryAfterMs, normalizeGarminActivity, jwtExpiresAt } from '../dist/integrations/garmin.js';
+import { Store } from '../dist/persistence/store.js';
+import { discoverGarmin, cacheGarminDownload, stageGarmin, garminPlan } from '../dist/migration/garmin-import.js';
 
 const temp = () => mkdtempSync(join(tmpdir(),'g2s-garmin-test-'));
 const FUTURE = Math.floor(Date.now()/1000)+90000;
@@ -124,7 +124,7 @@ test('Garmin activity parsing rejects missing IDs and treats startTimeGMT as UTC
 });
 
 test('end-to-end mocked Garmin download and Strava import is resumable without resending',async()=>{
-  const { runGarminMigration } = await import('../src/garmin-import.mjs');
+  const { runGarminMigration } = await import('../dist/migration/garmin-import.js');
   const d=temp(); const store=new Store(join(d,'state'));
   try {
     store.addGarmin({id:'111',name:'Workout',startUtc:1100000000,durationSeconds:1200,distanceM:4000,sport:'Run'});
@@ -194,7 +194,7 @@ test('Garmin HTTP 429 without Retry-After uses explicit conservative fallback', 
 });
 
 test('Garmin throttle after a download does not discard previously uploaded progress', async()=>{
-  const {runGarminMigration} = await import('../src/garmin-import.mjs');
+  const {runGarminMigration} = await import('../dist/migration/garmin-import.js');
   const d=temp(); const store=new Store(join(d,'state'));
   try {
     store.addGarmin({id:'20',name:'Run A',startUtc:1100000000,durationSeconds:1200,distanceM:4000,sport:'Run'});
