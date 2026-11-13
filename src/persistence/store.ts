@@ -91,7 +91,7 @@ export class Store {
       FROM garmin_activities g LEFT JOIN files f ON f.digest=g.file_digest
       ORDER BY g.start_utc ASC, g.id ASC`).all();
   }
-  countGarmin() { return this.db.prepare('SELECT COUNT(*) AS n FROM garmin_activities').get().n; }
+  countGarmin(): number { return Number((this.db.prepare('SELECT COUNT(*) AS n FROM garmin_activities').get() as {n:number}|undefined)?.n ?? 0); }
   garminFile(id, digest) {
     this.db.prepare(`UPDATE garmin_activities SET file_digest=?,state='staged',error=NULL,updated_at=datetime('now') WHERE id=?`).run(digest, id);
   }
@@ -180,6 +180,6 @@ export class Store {
     if (epoch == null) return [];
     return this.db.prepare('SELECT * FROM remote_activities WHERE start_utc BETWEEN ? AND ?').all(epoch - 3, epoch + 3) as unknown as RemoteActivity[];
   }
-  countRemote() { return this.db.prepare('SELECT COUNT(*) AS n FROM remote_activities').get().n; }
+  countRemote(): number { return Number((this.db.prepare('SELECT COUNT(*) AS n FROM remote_activities').get() as {n:number}|undefined)?.n ?? 0); }
   counts() { return this.db.prepare('SELECT status, COUNT(*) AS count FROM files GROUP BY status ORDER BY status').all(); }
 }

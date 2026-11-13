@@ -4,13 +4,13 @@ import { dirname, join } from 'node:path';
 
 // Audit, don't delete. Same-day sessions are NOT duplicates without time overlap.
 const SPORT_GROUPS = new Map<string,string>([
-  ...['Run','TrailRun','VirtualRun'].map(x => [x,'running']),
-  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x=>[x,'cycling']),
-  ...['Walk','Hike'].map(x=>[x,'walking']),
-  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining'].map(x=>[x,'strength']),
-  ...['Swim'].map(x=>[x,'swimming']),
-  ...['Yoga','Pilates'].map(x=>[x,'mindbody']),
-  ...['Rowing','VirtualRow'].map(x=>[x,'rowing']),
+  ...['Run','TrailRun','VirtualRun'].map(x=>[x,'running'] as [string,string]),
+  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x=>[x,'cycling'] as [string,string]),
+  ...['Walk','Hike'].map(x=>[x,'walking'] as [string,string]),
+  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining'].map(x=>[x,'strength'] as [string,string]),
+  ...['Swim'].map(x=>[x,'swimming'] as [string,string]),
+  ...['Yoga','Pilates'].map(x=>[x,'mindbody'] as [string,string]),
+  ...['Rowing','VirtualRow'].map(x=>[x,'rowing'] as [string,string]),
 ]);
 const confidenceRank = { high:0, medium:1, review:2 };
 const safeNum = v => v !== null && v !== undefined && Number.isFinite(Number(v)) ? Number(v) : null;

@@ -5,13 +5,13 @@ import { findDuplicatePairs, routeAgreement } from './duplicates.js';
 // conservative. This adds plausible overlaps that it excluded, and NEVER
 // upgrades an additional candidate above 'review'.
 const groups = new Map<string,string>([
-  ...['Run','TrailRun','VirtualRun'].map(x => [x, 'running']),
-  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x => [x,'cycling']),
-  ...['Walk','Hike'].map(x => [x,'walking']),
-  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining','Elliptical'].map(x => [x,'strength']),
-  ...['Swim'].map(x => [x,'swimming']),
-  ...['Yoga','Pilates'].map(x => [x,'mindbody']),
-  ...['Rowing','VirtualRow'].map(x => [x,'rowing']),
+  ...['Run','TrailRun','VirtualRun'].map(x=>[x,'running'] as [string,string]),
+  ...['Ride','VirtualRide','MountainBikeRide','EMountainBikeRide','EBikeRide','GravelRide','Handcycle'].map(x=>[x,'cycling'] as [string,string]),
+  ...['Walk','Hike'].map(x=>[x,'walking'] as [string,string]),
+  ...['WeightTraining','Workout','Crossfit','HighIntensityIntervalTraining','Elliptical'].map(x=>[x,'strength'] as [string,string]),
+  ...['Swim'].map(x=>[x,'swimming'] as [string,string]),
+  ...['Yoga','Pilates'].map(x=>[x,'mindbody'] as [string,string]),
+  ...['Rowing','VirtualRow'].map(x=>[x,'rowing'] as [string,string]),
 ]);
 const generic = new Set(['Workout','HighIntensityIntervalTraining','Other']);
 const numeric = x => x === null || x === undefined || !Number.isFinite(Number(x)) ? null : Number(x);
